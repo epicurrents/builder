@@ -5,6 +5,13 @@ import fs from 'fs'
 import path from 'path'
 
 export const sep = path.sep
+/**
+ * Recursively copy the contents of the folder from `root` to the `dest`.
+ * @param {string} root - Root folder of the items to copy.
+ * @param {string} dest - Copy destination.
+ * @param {string} path - Current copy path relative to `root` (optional, defaults to the `root`).
+ * @param {string[]} extensions - List of file extensions to copy (optional, defaults to all files).
+ */
 export function copyFolderRecursive (root, dest, path = '', extensions = []) {
     const sourcePath = path.length ? [root, path].join(sep) : root
     if (fs.existsSync(sourcePath) && fs.lstatSync(sourcePath).isDirectory()) {
@@ -29,6 +36,9 @@ export function copyFolderRecursive (root, dest, path = '', extensions = []) {
     }
 }
 /**
+ * Delete the folder and all of its contents.
+ * @param {string} path - Path of the folder to delete.
+ *
  * Original method from https://stackoverflow.com/a/52526549.
  */
 export function deleteFolderRecursive (path) {
@@ -49,21 +59,28 @@ export function deleteFolderRecursive (path) {
         console.warn(`${path} is not a directory.`)
     }
 }
-
+/**
+ * Dependency packages as a Map of:
+ * ```
+ * key: {
+ *      name<sring>: name of the folder to install the package in,
+ *      branch<sring>?: name of the git branch to check out,
+ *      prebuild<sring[]>: list of commands to run before building the package,
+ *      rename<boolean>?: rename the install folder to match the `name` parameter,
+ *      repository<sring>: URL to a git repository,
+ * }
+ * // Or
+ * ```
+ */
 export const dependencies = new Map([
     // Utilities must be installed first.
     ['util', {
         packages: [
-            { name: 'asymmetric-io-mutex' },
-            { name: 'scoped-event-bus' },
             { name: 'scoped-event-log' },
+            { name: 'scoped-event-bus' },
+            { name: 'asymmetric-io-mutex' },
         ],
         repository: 'https://github.com/sam-19',
-    }],
-    /** There is only one interface. This package will be renamed 'interface' after it has been cloned. */
-    ['interface', {
-        name: 'interface',
-        repository: 'https://github.com/epicurrents/vite-interface',
     }],
     ['epicurrents', {
         packages: [
@@ -84,17 +101,30 @@ export const dependencies = new Map([
         ],
         repository: 'https://github.com/epicurrents',
     }],
+    /** There is only one interface. */
+    ['interface', {
+        branch: 'ohif-mod',
+        name: 'interface',
+        /** Run these commands before building the package. */
+        prebuild: [
+            'npm run copy:workers',
+        ],
+        /** Rename the package to the map item key value (here 'interface'). */
+        rename: true,
+        repository: 'https://github.com/epicurrents/vite-interface',
+    }],
     /** Add OHIF viewer last. */
     ['ohif', {
         branch: 'release/3.9',
         external: true,
         name: 'ohif',
+        rename: true,
         repository: 'https://github.com/OHIF/Viewers.git',
     }],
 ])
 
 export const interfaceDir = 'interface'
-export const rootDir = import.meta.dirname.replace(/scripts\/?$/, '')
+export const rootDir = import.meta.dirname.replace(/\/scripts\/?$/, '')
 
 export const workerPaths = [
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],

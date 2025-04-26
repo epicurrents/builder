@@ -31,9 +31,9 @@ export function updateDependency (pkg, dir = rootDir) {
 }
 
 console.info("Updating dependencies...")
-const scope = (process.argv[2] || 'all').split(',').map(s => s.trim())
+const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
 for (const [key, value] of dependencies) {
-    if ((scope.includes(key) || scope.includes('all'))) {
+    if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
         if (Object.hasOwn(value, 'packages')) {
             const { packages } = value
             packages.forEach(pkg => {

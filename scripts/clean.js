@@ -19,19 +19,24 @@ export function cleanDependency (pkg, dir = rootDir) {
 }
 
 console.info("Cleaning dependency modules...")
-for (const [dir, entry] of dependencies) {
+for (const [key, value] of dependencies) {
     const limit = process.argv[2]
-    if (dir !== 'epicurrents' || limit !== 'epicurrents') {
+    const validScopes = ['epicurrents', 'interface']
+    if (!validScopes.includes(key) || (limit && limit !== key)) {
         // Only epicurrents modules have dependencies to clean.
         continue
     }
-    const destDir = rootDir + dir
+    const destDir = [rootDir, key].join(sep)
     if (!fs.existsSync(destDir) || !fs.lstatSync(destDir).isDirectory()) {
-        console.info(`Directory ${dir} does not exist, skipping.`)
+        console.info(`Directory ${key} does not exist, skipping.`)
         continue
     }
-    entry.packages.forEach(pkg => {
-        cleanDependency(pkg, destDir)
-    })
+    if (value.packages) {
+        value.packages.forEach(pkg => {
+            cleanDependency(pkg, destDir)
+        })
+    } else {
+        cleanDependency(value, destDir)
+    }
 }
 console.info("Cleaning dependency modules complete.")
