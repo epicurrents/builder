@@ -115,16 +115,16 @@ export const dependencies = new Map([
     }],
     /** Add OHIF viewer last. */
     ['ohif', {
-        branch: 'release/3.9',
+        branch: '3.9/nextcloud',
         external: true,
         name: 'ohif',
         rename: true,
-        repository: 'https://github.com/OHIF/Viewers.git',
+        repository: 'https://github.com/epicurrents/ohif-viewers.git',
     }],
 ])
 
 export const interfaceDir = 'interface'
-export const rootDir = import.meta.dirname.replace(/\/scripts\/?$/, '')
+export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
 
 export const workerPaths = [
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
