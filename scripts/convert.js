@@ -9,7 +9,8 @@ if (!scope) {
 }
 
 if (scope === 'ohif') {
-    const ohifDir = [interfaceDir, 'public', 'ohif'].join(sep)
+    const folder = process.argv.length > 3 && process.argv.slice(3).includes('--prod') ? 'build' : 'public'
+    const ohifDir = [interfaceDir, folder, 'ohif'].join(sep)
     if (!fs.existsSync(ohifDir)) {
         console.error(`Directory ${ohifDir} does not exist.`)
         process.exit(1)
@@ -22,7 +23,7 @@ if (scope === 'ohif') {
     // The OHIF viewer uses a global CSS file that will mess up any defaults and styles with conflicting names in the
     // Epicurrents interface. We need to convert the global styles into scoped styles that only affect the OHIF viewer
     // element and dynamic modal elements.
-    console.info(`Converting global OHIF styles to scoped styles...`)
+    console.info(`Converting global OHIF styles to scoped styles at ${ohifDir}...`)
     const styles = fs.readFileSync(styleFile, 'utf8')
                      // Remove all new lines.
                      .replace(/(\r?\n)+/g, '')
