@@ -22,14 +22,13 @@ export function initializeDependency (pkg, repository, parent) {
     const pkgDir = [parent, pkg.name].join(sep)
     const pkgRepo = pkg.rename ? `${repository} ${pkg.name}` : `${repository}/${pkg.name}`
     if (fs.existsSync(pkgDir) && fs.lstatSync(pkgDir).isDirectory()) {
-        // This shouldn't really happen, this is from a previous script version.
-        console.info(`Package ${pkg.name} already exists, pulling from remote.`)
-        execSync(`cd ${pkgDir} && git pull --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
+        console.info(`Package ${pkg.name} already exists, fetching from remote.`)
+        execSync(`cd ${pkgDir} && git fetch --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
             if (err) {
-                console.error(`Error updating repository: ${err}`)
+                console.error(`Error fetching from remote: ${err}`)
                 return
             }
-            console.error(`Error updating repository: ${stderr}`)
+            console.error(`Error fetching from remote: ${stderr}`)
         })
     } else {
         console.info(`Cloning package ${pkg.name}.`)
@@ -41,17 +40,24 @@ export function initializeDependency (pkg, repository, parent) {
             console.error(`Error cloning repository: ${stderr}`)
         })
     }
-    // Checkout custom branch, if needed.
-    if (pkg.branch) {
-        console.info(`Checking out branch ${pkg.branch} for package ${pkg.name}.`)
-        execSync(`cd ${pkgDir} && git checkout ${pkg.branch}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-            if (err) {
-                console.error(`Error changing branch: ${err}`)
-                return
-            }
-            console.error(`Error changing branch: ${stderr}`)
-        })
-    }
+    // Checkout custom branch or main branch (in case we were on custom branch before).
+    const branch = pkg.branch || 'main'
+    console.info(`Checking out branch ${branch} for package ${pkg.name}.`)
+    execSync(`cd ${pkgDir} && git checkout ${branch}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
+        if (err) {
+            console.error(`Error changing branch: ${err}`)
+            return
+        }
+        console.error(`Error changing branch: ${stderr}`)
+    })
+    console.info(`Pulling updates from remote.`)
+    execSync(`cd ${pkgDir} && git pull --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
+        if (err) {
+            console.error(`Error pulling from remote: ${err}`)
+            return
+        }
+        console.error(`Error pulling from remote: ${stderr}`)
+    })
     // Stop here if it is an external package.
     if (pkg.external) {
         console.info(`Package ${pkg.name} is external, manual installation required.`)

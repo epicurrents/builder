@@ -86,24 +86,23 @@ export const dependencies = new Map([
         packages: [
             // { branch: '', name: 'package-name', repository: '' },
             // Core must be the first @epicurrents module.
-            { name: 'core', branch: 'workspace' },
+            { name: 'core' },
             // Resource modules.
-            { name: 'doc-module', branch: 'workspace' },
-            { name: 'eeg-module', branch: 'workspace' },
-            { name: 'emg-module', branch: 'workspace' },
+            { name: 'doc-module' },
+            { name: 'eeg-module' },
+            { name: 'emg-module' },
             // Source type readers.
-            { name: 'edf-reader', branch: 'workspace' },
-            { name: 'htm-reader', branch: 'workspace' },
-            { name: 'pdf-reader', branch: 'workspace' },
+            { name: 'edf-reader', branch: 'encoder' },
+            { name: 'htm-reader' },
+            { name: 'pdf-reader' },
             // Services.
-            { name: 'onnx-service', branch: 'workspace' },
-            { name: 'pyodide-service', branch: 'workspace' },
+            { name: 'onnx-service' },
+            { name: 'pyodide-service' },
         ],
         repository: 'https://github.com/epicurrents',
     }],
     /** There is only one interface. */
     ['interface', {
-        branch: 'ohif-mod',
         name: 'interface',
         /** Run these commands before building the package. */
         prebuild: [
