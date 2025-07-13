@@ -126,13 +126,20 @@ for (const [key, value] of dependencies) {
         console.error(`No repository found for ${key}.`)
         continue
     }
-    if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
+    if ((scope.map(s => s.split('/')[0]).includes(key) || scope.includes('all') || !scope.length)) {
+        const scopeLimit = scope.map(s => s.split('/')).find(s => s[0] === key)
         if (Object.hasOwn(value, 'packages')) {
             const { packages, repository } = value
             packages.forEach(pkg => {
+                if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== pkg.name) {
+                    return
+                }
                 initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`)
             })
         } else if (Object.hasOwn(value, 'name')) {
+            if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== value.name) {
+                continue
+            }
             initializeDependency(value, value.repository, rootDir)
         }
         execSync('npm install --if-present', { stdio: 'inherit' })
