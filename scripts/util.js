@@ -94,7 +94,13 @@ export const dependencies = new Map([
             // Source type readers.
             { name: 'edf-reader', branch: 'encoder' },
             { name: 'htm-reader' },
-            { name: 'pdf-reader' },
+            { 
+                name: 'pdf-reader',
+                prebuild: [
+                    'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
+                    //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
+                ],
+            },
             // Services.
             { name: 'onnx-service' },
             { name: 'pyodide-service' },
