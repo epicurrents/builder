@@ -8,6 +8,7 @@
         "build:assets": "node scripts/build.js util interface epicurrents",
         "build:dev": "npm run build:assets && npm run build:ohif:dev && npm run copy:all && cd interface && npm run build:app",
         "build:lib": "cd interface && npm run build",
+        "build:lib:nc": "cd interface && npm run build:nc",
         "build:ohif:dev": "cd ohif && cross-env PUBLIC_URL=/ohif/ yarn run build && cd .. && npm run copy:ohif && node scripts/convert.js ohif",
         "build:ohif:nc": "cd ohif && cross-env NODE_ENV=production APP_CONFIG=config/nextcloud.js PUBLIC_URL=/apps/epicurrents/ohif/ NX_SKIP_NX_CACHE=true yarn run build && cd .. && node scripts/copy.js ohif --prod && node scripts/convert.js ohif --prod",
         "clean": "node scripts/clean.js",
