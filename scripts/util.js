@@ -109,6 +109,7 @@ export const dependencies = new Map([
     }],
     /** There is only one interface. */
     ['interface', {
+        branch: 'touch-controls',
         name: 'interface',
         /** Run these commands before building the package. */
         prebuild: [
