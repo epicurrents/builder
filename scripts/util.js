@@ -94,13 +94,14 @@ export const dependencies = new Map([
             // Source type readers.
             { name: 'edf-reader', branch: 'encoder' },
             { name: 'htm-reader' },
-            { 
+            {
                 name: 'pdf-reader',
                 prebuild: [
                     'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
                     //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
                 ],
             },
+            { name: 'wav-reader' },
             // Services.
             { name: 'onnx-service' },
             { name: 'pyodide-service' },
@@ -133,11 +134,12 @@ export const interfaceDir = 'interface'
 export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
 
 export const workerPaths = [
+    //['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'htm-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pdf-reader', 'umd'],
+    ['node_modules', '@epicurrents', 'wav-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pyodide-service', 'umd'],
-    // The other modules may contained compiled core package workers.
-    // Copy core last to overwrite any such previously copied files.
+    // Handle core last to overwrite workers copied from other packages.
     ['node_modules', '@epicurrents', 'core', 'umd'],
 ]
