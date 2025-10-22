@@ -86,11 +86,12 @@ export const dependencies = new Map([
         packages: [
             // { branch: '', name: 'package-name', repository: '' },
             // Core must be the first @epicurrents module.
-            { name: 'core' },
+            { name: 'core', branch: 'text-reader' },
             // Resource modules.
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
+            { name: 'ncs-module' },
             // Source type readers.
             { name: 'edf-reader', branch: 'encoder' },
             { name: 'htm-reader' },
@@ -101,6 +102,7 @@ export const dependencies = new Map([
                     //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
                 ],
             },
+            //{ name: 'synergy-reader' },
             { name: 'wav-reader' },
             // Services.
             { name: 'onnx-service' },
@@ -140,6 +142,7 @@ export const workerPaths = [
     ['node_modules', '@epicurrents', 'pdf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'wav-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pyodide-service', 'umd'],
-    // Handle core last to overwrite workers copied from other packages.
+    // The other modules may contained compiled core package workers.
+    // Copy core last to overwrite any such previously copied files.
     ['node_modules', '@epicurrents', 'core', 'umd'],
 ]
