@@ -86,13 +86,15 @@ export const dependencies = new Map([
         packages: [
             // { branch: '', name: 'package-name', repository: '' },
             // Core must be the first @epicurrents module.
-            { name: 'core', branch: 'text-reader' },
+            { name: 'core' },
             // Resource modules.
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
             { name: 'ncs-module' },
             // Source type readers.
+            { name: 'api-reader' },
+            { name: 'dicom-reader' },
             { name: 'edf-reader', branch: 'encoder' },
             { name: 'htm-reader' },
             {
@@ -136,7 +138,8 @@ export const interfaceDir = 'interface'
 export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
 
 export const workerPaths = [
-    //['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
+    ['node_modules', '@epicurrents', 'api-reader', 'umd'],
+    ['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'htm-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pdf-reader', 'umd'],
