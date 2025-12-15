@@ -114,7 +114,7 @@ export const dependencies = new Map([
     }],
     /** There is only one interface. */
     ['interface', {
-        branch: 'touch-controls',
+        branch: 'webawesome',
         name: 'interface',
         /** Run these commands before building the package. */
         prebuild: [
