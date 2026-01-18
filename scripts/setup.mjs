@@ -6,7 +6,7 @@
 
 import fs from 'fs'
 import { execSync } from 'child_process'
-import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.js'
+import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.mjs'
 
 // Do not run setup if the epicurrents module namespace exists.
 //if (fs.existsSync(epicRoot) && fs.lstatSync(epicRoot).isDirectory()) {

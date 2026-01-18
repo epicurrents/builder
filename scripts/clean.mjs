@@ -8,7 +8,7 @@
  */
 
 import fs from 'fs'
-import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.js'
+import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.mjs'
 
 export function cleanDependency (pkg, dir = rootDir) {
     // Delete separate @epicurrents packages to guarantee version match across dependencies.

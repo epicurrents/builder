@@ -86,12 +86,13 @@ export const dependencies = new Map([
         packages: [
             // { branch: '', name: 'package-name', repository: '' },
             // Core must be the first @epicurrents module.
-            { name: 'core' },
+            { name: 'core', branch: 'trends' },
             // Resource modules.
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
             { name: 'ncs-module' },
+            { name: 'tab-module' },
             // Source type readers.
             { name: 'api-reader' },
             { name: 'dicom-reader' },
@@ -100,8 +101,8 @@ export const dependencies = new Map([
             {
                 name: 'pdf-reader',
                 prebuild: [
-                    'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
-                    //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
+                    //'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
+                    'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
                 ],
             },
             //{ name: 'synergy-reader' },

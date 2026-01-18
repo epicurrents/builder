@@ -4,7 +4,7 @@
 
 import fs from 'fs'
 import { execSync } from 'child_process'
-import { dependencies, rootDir, sep } from './util.js'
+import { dependencies, rootDir, sep } from './util.mjs'
 
 export function buildDependency (pkg, dir) {
     const pkgDir = [dir, pkg.name].join(sep)
