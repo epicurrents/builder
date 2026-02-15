@@ -115,7 +115,7 @@ export const dependencies = new Map([
     }],
     /** There is only one interface. */
     ['interface', {
-        branch: 'webawesome',
+        branch: 'main',
         name: 'interface',
         /** Run these commands before building the package. */
         prebuild: [
@@ -123,7 +123,7 @@ export const dependencies = new Map([
         ],
         /** Rename the package to the map item key value (here 'interface'). */
         rename: true,
-        repository: 'https://github.com/epicurrents/vite-interface',
+        repository: 'https://github.com/epicurrents/interface',
     }],
     /** Add OHIF viewer last. */
     ['ohif', {
