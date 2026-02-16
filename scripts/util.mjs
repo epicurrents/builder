@@ -86,7 +86,7 @@ export const dependencies = new Map([
         packages: [
             // { branch: '', name: 'package-name', repository: '' },
             // Core must be the first @epicurrents module.
-            { name: 'core', branch: 'trends' },
+            { name: 'core' },
             // Resource modules.
             { name: 'doc-module' },
             { name: 'eeg-module' },
