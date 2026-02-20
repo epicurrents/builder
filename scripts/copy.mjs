@@ -4,7 +4,8 @@
 
 import fs from 'fs'
 import path from 'path'
-import { copyFolderRecursive, interfaceDir, rootDir, sep, workerPaths } from './util.mjs'
+import { copyFolderRecursive, sep } from './util.mjs'
+import { interfaceDir, rootDir, workerPaths } from './env.mjs'
 
 console.info('Copying compiled assets...')
 const dest = path.join(rootDir, interfaceDir, 'dist')

@@ -1,10 +1,11 @@
 /**
- * Build existing dependencies from source.
+ * Build existing packages from source.
  */
 
 import fs from 'fs'
 import { execSync } from 'child_process'
-import { dependencies, rootDir, sep } from './util.mjs'
+import { sep } from './util.mjs'
+import { packages, rootDir } from 'env.mjs'
 
 export function buildDependency (pkg, dir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -32,9 +33,9 @@ export function buildDependency (pkg, dir) {
     })
     console.debug(`Package ${pkg.name} built.`)
 }
-console.info("Building dependencies...")
+console.info("Building packages...")
 const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
-for (const [key, value] of dependencies) {
+for (const [key, value] of packages) {
     if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
         if (Object.hasOwn(value, 'packages')) {
             const { packages } = value
@@ -46,4 +47,4 @@ for (const [key, value] of dependencies) {
         }
     }
 }
-console.info("Done building dependencies.")
+console.info("Done building packages.")

@@ -8,10 +8,11 @@
  */
 
 import fs from 'fs'
-import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.mjs'
+import { deleteFolderRecursive, sep } from './util.mjs'
+import { packages, rootDir } from 'env.mjs'
 
 export function cleanDependency (pkg, dir = rootDir) {
-    // Delete separate @epicurrents packages to guarantee version match across dependencies.
+    // Delete separate @epicurrents packages to guarantee version match across packages.
     deleteFolderRecursive([dir, pkg.name, 'node_modules', '@epicurrents'].join(sep))
     // Delete separate EventBus and Log packages so the global Log points to the same object.
     deleteFolderRecursive([dir, pkg.name, 'node_modules', 'scoped-event-bus'].join(sep))
@@ -19,11 +20,11 @@ export function cleanDependency (pkg, dir = rootDir) {
 }
 
 console.info("Cleaning dependency modules...")
-for (const [key, value] of dependencies) {
+for (const [key, value] of packages) {
     const limit = process.argv[2]
     const validScopes = ['epicurrents', 'interface']
     if (!validScopes.includes(key) || (limit && limit !== key)) {
-        // Only epicurrents modules have dependencies to clean.
+        // Only epicurrents modules have packages to clean.
         continue
     }
     const destDir = [rootDir, key].join(sep)

@@ -1,9 +1,10 @@
 /**
- * Update existing dependencies from repository.
+ * Update existing packages from repository.
  */
 
 import { execSync } from 'child_process'
-import { dependencies, rootDir, sep } from './util.mjs'
+import { sep } from './util.mjs'
+import { packages, rootDir } from 'env.mjs'
 
 export function updateDependency (pkg, dir = rootDir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -30,9 +31,9 @@ export function updateDependency (pkg, dir = rootDir) {
     console.debug(`Package ${pkg.name} updated.`)
 }
 
-console.info("Updating dependencies...")
+console.info("Updating packages...")
 const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
-for (const [key, value] of dependencies) {
+for (const [key, value] of packages) {
     if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
         if (Object.hasOwn(value, 'packages')) {
             const { packages } = value
@@ -44,4 +45,4 @@ for (const [key, value] of dependencies) {
         }
     }
 }
-console.info("Done updating dependencies.")
+console.info("Done updating packages.")

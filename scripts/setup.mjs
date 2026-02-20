@@ -1,12 +1,13 @@
 /**
- * This script initialiazes the chosen set of dependencies for development, cloning the latest
+ * This script initialiazes the chosen set of packages for development, cloning the latest
  * versions directly from repository.
  * Original method from https://stackoverflow.com/a/20643568.
  */
 
 import fs from 'fs'
 import { execSync } from 'child_process'
-import { deleteFolderRecursive, dependencies, rootDir, sep } from './util.mjs'
+import { deleteFolderRecursive, sep } from './util.mjs'
+import { packages, rootDir } from './env.mjs'
 
 // Do not run setup if the epicurrents module namespace exists.
 //if (fs.existsSync(epicRoot) && fs.lstatSync(epicRoot).isDirectory()) {
@@ -71,7 +72,7 @@ export function initializeDependency (pkg, repository, parent) {
         }
         console.error(`Error installing package: ${stderr}`)
     })
-    // Remove local epicurrents packages, event bus and log before building to use the same version in all dependencies.
+    // Remove local epicurrents packages, event bus and log before building to use the same version in all packages.
     if (!pkg.external) {
         const localCore = [pkgDir, 'node_modules', '@epicurrents'].join(sep)
         if (fs.existsSync(localCore) && fs.lstatSync(localCore).isDirectory()) {
@@ -119,9 +120,9 @@ export function initializeDependency (pkg, repository, parent) {
     console.info(`Package ${pkg.name} initialized.`)
 }
 
-console.info("Cloning and initializing missing dependencies...")
+console.info("Cloning and initializing missing packages...")
 const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
-for (const [key, value] of dependencies) {
+for (const [key, value] of packages) {
     if (!Object.hasOwn(value, 'repository')) {
         console.error(`No repository found for ${key}.`)
         continue
@@ -145,4 +146,4 @@ for (const [key, value] of dependencies) {
         execSync('npm install --if-present', { stdio: 'inherit' })
     }
 }
-console.info("Done initializing dependencies.")
+console.info("Done initializing packages.")
