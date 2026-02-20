@@ -18,7 +18,7 @@ import { packages, rootDir } from './env.mjs'
 export function initializeDependency (pkg, repository, parent) {
     if (!fs.existsSync(parent)) {
         console.info(`Creating missing parent directory ${parent}.`)
-        execSync(`mkdir ${parent}`, { stdio: 'inherit' })
+        fs.mkdirSync(parent, { recursive: true })
     }
     const pkgDir = [parent, pkg.name].join(sep)
     const pkgRepo = pkg.rename ? `${repository} ${pkg.name}` : `${repository}/${pkg.name}`

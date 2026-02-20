@@ -73,8 +73,9 @@ export const packages = new Map([
             {
                 name: 'pdf-reader',
                 prebuild: [
+                    'node scripts/copy.mjs --from node_modules/pdfjs-dist --to node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist',
                     //'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
-                    'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
+                    //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
                 ],
             },
             //{ name: 'synergy-reader' },
