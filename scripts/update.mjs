@@ -4,7 +4,7 @@
 
 import { execSync } from 'child_process'
 import { sep } from './util.mjs'
-import { packages, rootDir } from 'env.mjs'
+import { packages, rootDir } from './env.mjs'
 
 export function updateDependency (pkg, dir = rootDir) {
     const pkgDir = [dir, pkg.name].join(sep)

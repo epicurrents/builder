@@ -1,6 +1,6 @@
 import fs from 'fs'
 import { sep } from './util.mjs'
-import { interfaceDir } from '/env.mjs'
+import { interfaceDir } from './env.mjs'
 
 const scope = process.argv[2]
 

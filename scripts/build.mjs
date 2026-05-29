@@ -4,8 +4,8 @@
 
 import fs from 'fs'
 import { execSync } from 'child_process'
-import { sep } from './util.mjs'
-import { packages, rootDir } from 'env.mjs'
+import { getScopeComponents, sep } from './util.mjs'
+import { packages, rootDir } from './env.mjs'
 
 export function buildDependency (pkg, dir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -34,16 +34,20 @@ export function buildDependency (pkg, dir) {
     console.debug(`Package ${pkg.name} built.`)
 }
 console.info("Building packages...")
-const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
+const scopes = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
 for (const [key, value] of packages) {
-    if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
-        if (Object.hasOwn(value, 'packages')) {
-            const { packages } = value
-            packages.forEach(pkg => {
-                buildDependency(pkg, `${[rootDir, key].join(sep)}`)
-            })
-        } else if (Object.hasOwn(value, 'name')) {
-            buildDependency(value, rootDir)
+    for (const [namespace, pkgName] of getScopeComponents(...scopes)) {
+        if ((namespace === key || namespace === 'all') || !namespace.length) {
+            if (Object.hasOwn(value, 'packages')) {
+                const { packages } = value
+                packages.forEach(pkg => {
+                    if (pkg.name === pkgName || !pkgName?.length) {
+                        buildDependency(pkg, `${[rootDir, key].join(sep)}`)
+                    }
+                })
+            } else if (Object.hasOwn(value, 'name')) {
+                buildDependency(value, rootDir)
+            }
         }
     }
 }

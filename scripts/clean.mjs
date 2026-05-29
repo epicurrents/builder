@@ -9,7 +9,7 @@
 
 import fs from 'fs'
 import { deleteFolderRecursive, sep } from './util.mjs'
-import { packages, rootDir } from 'env.mjs'
+import { packages, rootDir } from './env.mjs'
 
 export function cleanDependency (pkg, dir = rootDir) {
     // Delete separate @epicurrents packages to guarantee version match across packages.
@@ -17,6 +17,12 @@ export function cleanDependency (pkg, dir = rootDir) {
     // Delete separate EventBus and Log packages so the global Log points to the same object.
     deleteFolderRecursive([dir, pkg.name, 'node_modules', 'scoped-event-bus'].join(sep))
     deleteFolderRecursive([dir, pkg.name, 'node_modules', 'scoped-event-log'].join(sep))
+    // Delete separate asymmetric-io-mutex copies so submodules pick up the workspace's freshly
+    // built dist instead of the one frozen at last `npm i`. Otherwise changes inside
+    // `util/asymmetric-io-mutex/` propagate to the root `node_modules` symlink but not to the
+    // per-package copies, leading to silent stale-dist bugs that look like the workspace build
+    // didn't run.
+    deleteFolderRecursive([dir, pkg.name, 'node_modules', 'asymmetric-io-mutex'].join(sep))
 }
 
 console.info("Cleaning dependency modules...")

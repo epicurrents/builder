@@ -5,7 +5,9 @@
     "main": "index.js",
     "scripts": {
         "build:app": "cd interface && npm run build:app",
+        "build:asset": "node scripts/build.mjs",
         "build:assets": "node scripts/build.mjs util interface epicurrents",
+        "build:tsc-all": "npm run build -w scoped-event-log -w scoped-event-bus -w asymmetric-io-mutex && npm run build:tsc --workspaces --if-present",
         "build:dev": "npm run build:assets && npm run build:ohif:dev && npm run copy:all && cd interface && npm run build:app",
         "build:lib": "cd interface && npm run build",
         "build:lib:bs": "cd interface && cross-env LAUNCHER=brainstatus npm run build:custom",
@@ -17,11 +19,15 @@
         "copy:ohif": "node scripts/copy.mjs ohif",
         "copy:workers": "node scripts/copy.mjs workers",
         "instl": "node scripts/install.mjs",
+        "preview": "cd interface && npm run preview",
         "setup": "node scripts/setup.mjs",
         "start": "npm run copy:workers && cd interface && npm run dev",
         "start:bs": "npm run copy:workers && cd interface && cross-env LAUNCHER=brainstatus npm run dev",
         "update": "node scripts/update.mjs",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "npm run test --workspaces --if-present",
+        "test:core": "cd epicurrents/core && vitest run --coverage",
+        "test:eeg": "cd epicurrents/eeg-module && vitest run --coverage",
+        "test:tab": "cd epicurrents/tab-module && vitest run --coverage"
     },
     "keywords": [],
     "author": "Sampsa Lohi",
@@ -32,8 +38,9 @@
         "interface"
     ],
     "devDependencies": {
+        "@vitest/coverage-v8": "^4.1.5",
         "cross-env": "^7.0.3",
-        "jest": "^29.7.0",
-        "ts-jest": "^29.2.5"
+        "jsdom": "^29.1.1",
+        "vitest": "^4.1.5"
     }
 }

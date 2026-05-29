@@ -157,3 +157,50 @@ npm run build:app
 ```
 
 3. Serve or deploy the contents of the `interface/build` (or `public`) folder as needed.
+
+---
+
+Monorepo package version compliance
+------------------------------------
+
+All packages under `epicurrents/` share a common build toolchain defined in `epicurrents/tsconfig.base.json`.
+Deviations between packages — different TypeScript versions, different module-resolution strategies, mismatched
+`ts-loader` or webpack versions — are a documented source of hard-to-diagnose bugs. The `_outputDataFieldsLen`/
+`BiosignalMutex` corruption incident (2026-05-16) was traced back to a wrong field-layout assumption that
+propagated silently because the worker bundle was built against a different version of the code than the main
+thread.
+
+**Canonical versions (update this table when bumping):**
+
+| Tool | Version | Set in |
+|---|---|---|
+| TypeScript | `^5.7.0` | each `package.json` devDependencies |
+| ts-loader | `^9.5.1` | each `package.json` devDependencies |
+| webpack | `^5.73.0` | each `package.json` devDependencies |
+| tsconfig base | — | `epicurrents/tsconfig.base.json` (extended by all packages) |
+
+**Rules:**
+- **Do not pin a package-specific TypeScript version** that differs from the table above. TypeScript is a
+  compiler that must agree across every package that imports from `@epicurrents/*`. A version mismatch in one
+  package silently produces structurally incompatible declaration files that type-check locally but fail at
+  runtime in the bundled output.
+- **Do not override compiler options in a package's `tsconfig.json` without a documented reason** in a comment.
+  The base config is the single source of truth; per-package overrides must be exceptional.
+- **After any toolchain version bump**, run the full type-check sweep across all packages before committing:
+  ```bash
+  cd epicurrents
+  for pkg in core api-reader dicom-reader doc-module edf-reader eeg-module emg-module \
+             htm-reader ncs-module onnx-service pdf-reader pyodide-service tab-module wav-reader; do
+      result=$(cd "$pkg" && npx tsc --noEmit 2>&1)
+      [ -z "$result" ] && echo "✓ $pkg" || { echo "✗ $pkg"; echo "$result" | head -5; }
+  done
+  ```
+- **Both build outputs must be regenerated together** after any change to shared code:
+  ```bash
+  # main-thread code (dist/):
+  npm run build:tsc
+  # worker bundles (umd/), then copy to interface:
+  npm run build:umd && node scripts/copy.mjs workers
+  ```
+  Rebuilding only one of the two leaves the other stale and can produce runtime mismatches where the main
+  thread and the worker disagree on data layouts or API signatures.

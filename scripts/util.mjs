@@ -59,3 +59,18 @@ export function deleteFolderRecursive (path) {
         console.warn(`${path} is not a directory.`)
     }
 }
+
+/**
+ * Get a list of package namespaces and names from a list of scopes passed as command line arguments.
+ * Scopes can be passed as `namespace` or `namespace/package` to get all packages in a namespace or a specific package,
+ * respectively.
+ * @param  {...any} scopes - One or more scopes.
+ * @returns {Array} - An array of arrays, each containing the namespace and package name. Will always return at least one array with an empty string if no scopes are provided.
+ */
+export function getScopeComponents (...scopes) {
+    const components = []
+    for (const scope of scopes) {
+        components.push(scope.split('/'))
+    }
+    return components.length ? components : [['']]
+}

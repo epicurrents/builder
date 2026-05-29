@@ -29,3 +29,8 @@ vendor
 
 .DS_Store
 ._*
+
+# AI assistants and related files
+.claude
+CLAUDE.md
+*ROADMAP.md
