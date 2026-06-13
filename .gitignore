@@ -9,7 +9,6 @@ lerna-debug.log*
 
 node_modules
 epicurrents/*
-!epicurrents/tsconfig.base.json
 interface
 ohif
 util
@@ -34,4 +33,3 @@ vendor
 # AI assistants and related files
 .claude
 CLAUDE.md
-*ROADMAP.md
