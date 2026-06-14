@@ -60,6 +60,7 @@ export const packages = new Map([
             // Core must be the first @epicurrents module.
             { name: 'core' },
             // Resource modules.
+            { name: 'acc-module' },
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
@@ -67,6 +68,7 @@ export const packages = new Map([
             { name: 'tab-module' },
             // Source type readers.
             { name: 'api-reader' },
+            { name: 'csv-reader' },
             { name: 'dicom-reader' },
             { name: 'edf-reader', branch: 'encoder' },
             { name: 'htm-reader' },
@@ -122,6 +124,7 @@ export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
  */
 export const workerPaths = [
     ['node_modules', '@epicurrents', 'api-reader', 'umd'],
+    ['node_modules', '@epicurrents', 'csv-reader', 'umd'],
     ['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'htm-reader', 'umd'],
