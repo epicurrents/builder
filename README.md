@@ -163,7 +163,7 @@ npm run build:app
 Monorepo package version compliance
 ------------------------------------
 
-All packages under `epicurrents/` share a common build toolchain defined in `epicurrents/tsconfig.base.json`.
+All packages under `epicurrents/` share a common build toolchain defined in `epicurrents/core/tsconfig.base.json`. Core extends it locally; every other package extends `@epicurrents/core/tsconfig.base.json` (resolved through the `@epicurrents/core` dependency), so the base is found both inside this monorepo and when a package is built standalone from its own repository.
 Deviations between packages — different TypeScript versions, different module-resolution strategies, mismatched
 `ts-loader` or webpack versions — are a documented source of hard-to-diagnose bugs. The `_outputDataFieldsLen`/
 `BiosignalMutex` corruption incident (2026-05-16) was traced back to a wrong field-layout assumption that
@@ -177,7 +177,7 @@ thread.
 | TypeScript | `^5.7.0` | each `package.json` devDependencies |
 | ts-loader | `^9.5.1` | each `package.json` devDependencies |
 | webpack | `^5.73.0` | each `package.json` devDependencies |
-| tsconfig base | — | `epicurrents/tsconfig.base.json` (extended by all packages) |
+| tsconfig base | — | `epicurrents/core/tsconfig.base.json` (core extends it locally; others via `@epicurrents/core/tsconfig.base.json`) |
 
 **Rules:**
 - **Do not pin a package-specific TypeScript version** that differs from the table above. TypeScript is a
