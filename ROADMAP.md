@@ -181,3 +181,79 @@ has none. Public surface to preserve: `play/pause/stop/setGain`, `currentTime`,
   streaming/real-time mode is ever added.
 - Entirely within `@epicurrents/core` (`assets/media`); EMG and ACC consume it.
   No new package, no cross-package migration beyond EMG's internal call swap.
+
+Module controls-bar — keyed config instead of static-index array
+----------------------------------------------------------------
+
+**Problem.** Each module's controls component (`AccControls`, `EegControls`,
+`EmgControls`, `NcsControls`, `PdfControls`, `TabControls`, `HtmControls`)
+builds an array of `ControlElement` descriptors, and `constructControls()`
+reads and updates them by **hardcoded array index** (`accControls[5]`,
+`accControls[6]`, …). Inserting, removing, or reordering a control shifts every
+later index, so new controls must be appended to the end and each per-index
+update branch is brittle.
+
+**Minimum fix — done in ACC, the reference example.** `AccControls`
+([interface/src/app/modules/acc/components/AccControls.vue](interface/src/app/modules/acc/components/AccControls.vue))
+now keys controls by `id`: `constructControls` resolves each descriptor through
+a `control(id)` helper and gates each build block with `wants(id)`, instead of
+indexing `accControls[N]`. That is what let the audio + video buttons be
+reordered freely (audio left of the examine/annotate block, video toggle
+between) — exactly the move the old index scheme made brittle. Convert the
+remaining six modules (`EegControls`, `EmgControls`, `NcsControls`,
+`PdfControls`, `TabControls`, `HtmControls`) to the same pattern; copy the
+`control` / `wants` shape from `AccControls`.
+
+**Stretch.** Redesign the controls system so a control set can be declared
+externally — a project plugin contributes its controls through config rather
+than editing a module's `*Controls.vue`. This aligns the controls surface with
+the project-plugin extension model used elsewhere.
+
+**Scope.** The minimum fix is per-module — the `constructControls` body in each
+of the seven controls components, applied independently; **ACC is converted,
+six remain**. The generic `ControlsBar` is unchanged by it (it consumes the
+descriptor arrays the same way regardless of how a module builds them); only
+the Stretch (external/config-driven declaration) touches the shared model.
+
+
+Data-unit-duration-driven signal-cache storage
+----------------------------------------------
+
+🟡 **Priority: yellow** — the right way forward, but deferred. This is a
+cross-cutting change to the SAB cache layout; the viewer must stay stable for
+the next couple of weeks, so do not start it inside that window.
+
+**State.** `BiosignalMutex` was designed to store its range bounds
+(`RANGE_START` / `RANGE_END` / `RANGE_ALLOCATED`, all `Int32`) as **data-unit
+counts**, with a separate `DATA_UNIT_DURATION` (`Int32`, milliseconds) field
+carrying the unit duration so counts convert back to time. The second half was
+never wired: every `initSignalBuffers` call leaves `dataUnitDurationMs` at its
+`1000` default, and callers pass `dataLength = _totalDataLength` **in seconds**.
+So the cache effectively assumes a fixed 1-second unit grid and `RANGE_END`
+holds whole seconds in an `Int32`.
+
+**Consequence.** A recording's total data length must land on whole seconds or
+`RANGE_END` truncates — out-of-bounds insert warnings, the last partial second
+lost. The CSV reader works around it with `ceil(sampleCount / samplingRate)`;
+that padded count leaking into the *reported* recording length was the
+phantom-tail bug, now resolved by reporting the true `_totalRecordingLength`
+while keeping the padded `_totalDataLength` for the cache. `EdfReader` has **no
+equivalent guard**: an EDF whose `dataRecordCount × dataRecordDuration` isn't a
+whole number of seconds (e.g. sub-second records that don't sum to an integer)
+hits the same truncation. Sub-millisecond record durations are a further
+casualty, since the millisecond field can't represent them — currently moot
+only because the field is unused.
+
+**Finish it.** Populate `DATA_UNIT_DURATION` with the real record duration
+through `initSignalBuffers` / `setupCache`, pass range values as true data-unit
+counts rather than seconds, and route every unit↔time conversion through the
+stored duration. That drops the 1-second assumption, lets the CSV reader remove
+its `ceil` (and the `_totalRecordingLength` decoupling band-aid), and makes EDF
+correct for any record duration.
+
+**Scope.** `BiosignalMutex`, `GenericSignalReader` (setup, cache-fill, and the
+`_cacheTimeToRecordingTime` / `_recordingTimeToCacheTime` conversions),
+`MontageProcessor`, and the worker substitutes — plus contract coverage for a
+fractional-second EDF and a non-1 s CSV. When it lands, update the EDF docs
+(edf-reader README + docs.epicurrents.io) to drop the whole-second /
+sub-millisecond caveat.
