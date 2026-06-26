@@ -43,7 +43,9 @@ for (const [key, value] of packages) {
             cleanDependency(pkg, destDir)
         })
     } else {
-        cleanDependency(value, destDir)
+        // Leaf scope (e.g. interface): the scope key is itself the package directory, so
+        // cleanDependency appends value.name onto rootDir directly.
+        cleanDependency(value, rootDir)
     }
 }
 console.info("Cleaning dependency modules complete.")
