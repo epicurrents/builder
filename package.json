@@ -27,7 +27,8 @@
         "test": "npm run test --workspaces --if-present",
         "test:core": "cd epicurrents/core && vitest run --coverage",
         "test:eeg": "cd epicurrents/eeg-module && vitest run --coverage",
-        "test:tab": "cd epicurrents/tab-module && vitest run --coverage"
+        "test:tab": "cd epicurrents/tab-module && vitest run --coverage",
+        "typecheck": "node scripts/typecheck.mjs"
     },
     "keywords": [],
     "author": "Sampsa Lohi",
