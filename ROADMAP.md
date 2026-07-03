@@ -294,3 +294,23 @@ producing a proposed file-by-file split for review before anything is written �
 the scoping calls (which packages warrant a file, what is stale) need sign-off.
 Update this file's intro line, which currently points readers at `CLAUDE.md`,
 once done.
+
+
+Converge WA form-control directives on the reactive-object binding
+------------------------------------------------------------------
+
+🟢 **Priority: green** — non-urgent; do it when the viewer starts wanting
+Composition-API components.
+
+**Why.** The viewer's `v-property="'name'"` directive (`src/util/wa-directive.ts`)
+binds to the component **instance** property, so it resolves only under the
+Options-API / SFC model. The platform's equivalent binds to a reactive object
+(`v-wa="[reactiveObject, 'key']"`) and works under both Options and Composition
+API. Until the viewer adopts the reactive-object binding, any viewer component
+using WA form controls (`wa-input` / `wa-switch` / `wa-checkbox` / `wa-select` /
+`wa-combobox` / `wa-textarea`) is locked to Options API.
+
+**Scope.** Switch `v-property` to the `[reactiveObject, 'key']` binding shape,
+convert each usage from a component ref to a `reactive({})` object + key, and
+fold the directive into the shared implementation. Data→element reactivity is
+already handled by a `watch` on the bound value, so no reactivity regression.
