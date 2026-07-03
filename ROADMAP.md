@@ -257,3 +257,40 @@ correct for any record duration.
 fractional-second EDF and a non-1 s CSV. When it lands, update the EDF docs
 (edf-reader README + docs.epicurrents.io) to drop the whole-second /
 sub-millisecond caveat.
+
+
+Documentation restructure (AGENTS.md / CLAUDE.md split)
+------------------------------------------------------
+
+🟢 **Priority: green** — deferred until the in-flight settings-event-bus work
+lands, then worth doing.
+
+**Why.** `CLAUDE.md` is gitignored (per-developer, unshareable), yet it holds
+the only written record of the workspace conventions and per-package
+architecture — so edits to it never reach other developers. Mirror the
+platform's split: a committed, tool-agnostic `AGENTS.md` with a gitignored
+`CLAUDE.md` that just imports it (`@AGENTS.md`).
+
+**Scope it in two tiers**, as the platform does (lean `AGENTS.md` + per-app
+READMEs), so no single file grows unbounded:
+
+- Workspace `frontend/viewer/AGENTS.md` — cross-cutting only: version
+  compliance, the build / test / `npm run typecheck` workflow, dependency-
+  direction invariants (util is upstream of core, never the reverse),
+  worker-bundle rules, comment conventions, and the platform-integration
+  event-bus notes.
+- Per-package `AGENTS.md` — each significant package (`core`, `interface`,
+  `edf-reader`, `eeg-module`, …) carries its own, committed in that package's
+  repo, holding its architecture and gotchas.
+
+**Mostly classify-and-relocate + prune.** Today's `CLAUDE.md` mixes durable
+conventions, per-package architecture, and transient session logs ("Analysis
+roadmap (sessions)", "Session N deep-dive findings"). Conventions move to the
+workspace `AGENTS.md`; architecture to the owning package; the session-log
+framing is dropped, keeping the durable content and cutting the stale.
+
+**First step.** A read-only audit of `CLAUDE.md` against the package layout,
+producing a proposed file-by-file split for review before anything is written —
+the scoping calls (which packages warrant a file, what is stale) need sign-off.
+Update this file's intro line, which currently points readers at `CLAUDE.md`,
+once done.
