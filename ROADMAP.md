@@ -85,8 +85,9 @@ separate hard-coded registration surfaces.
 
 The hard prerequisite is already shipped: `setups/index.ts` imports no modules
 and hands the consumer an async `register(ctx)` callback (invoked with `await`,
-so dynamic `import()` fits). Level 1 below is the near-term target; Level 2 is
-captured for later.
+so dynamic `import()` fits). Level 1 (data-driven menu) is done; Level 1.5 (the
+per-project build) is the near-term implementation; Level 2 (runtime-loaded
+modules) is captured below for later.
 
 ### Level 1 — config-driven registration + data-driven menu (low risk)
 
@@ -129,32 +130,102 @@ module; `AppMenubar.vue`'s `fileContexts` builder replaced by the importer
 iteration; a gitignored module-list config schema. No new importer/module API —
 the menu consumes `moduleName` + `fileTypes`, both already registered.
 
+### Level 1.5 — per-project viewer build (near-term implementation, chosen 2026-07-17)
+
+The pragmatic stand-in for Level 2, and the path actually being built. It stays
+inside a single build pass (Level 1's guarantee — one core version, workers
+inlined at `?raw` build time) but lets the active deployment's project contribute
+its own modules without the generic base carrying them.
+
+Shape: the platform's `base.ts` registers only the stable modalities (EEG + EDF +
+DICOM). The base build is parametrised by the active project (`VITE_PROJECT`,
+mirroring the SPA's existing build-time project selection in
+`frontend/src/projects/active.ts`); when a project declares a viewer overlay, its
+`register(ctx)` — importing the project-specific reader package and its worker
+`?raw` — is bundled in and run after the base registration, emitting
+`viewer-dist/<project>/` instead of only `viewer-dist/base/`. The Nicolet `.e`
+reader moves out of `base.ts` into the edu project's overlay this way: nic bytes
+ship only in edu's build, and the generic base stays clean.
+
+What it deliberately does not solve, and why it is not yet Level 2: modules are
+still co-built with the base in one pass, so there is no runtime load, no
+separately-versioned artifact, and none of the three hard problems below. It
+covers "this module belongs with this project" but not "load a module shipped
+independently of the base." When only the former is needed — the edu/nic case —
+this is the whole answer; Level 2 is for third-party or hot-swappable modules.
+
 ### Level 2 — patch a deployed base with independently-built modules (deferred)
 
 The ambitious end state: load a module built and shipped *separately* from the
-base, not co-built. Three hard problems, none fatal, all real:
+base — a third-party reader, or a module hot-added to a running deployment without
+rebuilding the base bundle. The module set, and each module's config, lives in a
+deployment-owned, gitignored runtime manifest; the base fetches it at startup and
+pulls in only what it lists. This is the "config out of git" goal realised at
+runtime rather than build time (Level 1.5 realises it at build time).
 
-- **Shared core singleton.** A separately-built module must resolve
-  `@epicurrents/core` to the host's single instance (class identity for
-  `instanceof`, one `RuntimeStateManager`, one event bus) — via native import
-  maps or module federation. A module bundling its own core copy silently breaks
-  `instanceof` and splits the event bus.
-- **Version handshake.** Async loading trades the build-time single-version
-  guarantee (the monorepo compliance rule) for runtime flexibility, re-opening
-  the silent worker/main data-layout corruption that rule exists to prevent —
-  now across independently-versioned artifacts. A module must declare the core
-  semver it built against, and the host must refuse an incompatible load loudly.
-- **Workers.** Today inlined via `?raw` at build time; a separate artifact must
-  serve its (self-contained `umd`) worker at a known URL and create it at
-  runtime — turning "which modules" config into "which modules *and where their
-  worker artifacts are served*".
+#### Requirements
 
-Not required for the config-out-of-git goal (Level 1 delivers that). Worth a
-design pass before any code; the version handshake is the part to think through
-first.
+- **One shared core instance.** A separately-built module must resolve
+  `@epicurrents/core` (and the shared `scoped-event-bus` / `scoped-event-log` /
+  `asymmetric-io-mutex`) to the host's *already-loaded* copy, not bundle its own.
+  Class identity backs `instanceof`, and there must be exactly one
+  `RuntimeStateManager`, one event bus, one `SETTINGS`. A second core copy
+  silently splits the event bus and breaks every `instanceof`. Delivered by native
+  ESM import maps (pin the shared specifiers to the host's chunk URLs) or a
+  module-federation shared-singleton graph, with the module built against those
+  specifiers as externals.
+- **Version / ABI handshake.** Runtime loading trades away the monorepo's
+  build-time single-version guarantee, reopening the worker/main data-layout
+  corruption that guarantee exists to prevent — now across independently-versioned
+  artifacts. Core must expose a data-layout / ABI version, distinct from its npm
+  semver and bumped only when the shared buffer layouts or worker message
+  contracts change; each module records the value it built against; the host
+  refuses a mismatch loudly at load rather than proceeding into silent corruption.
+- **Worker artifacts served by URL.** Level 1's `?raw` + `inlineWorker` inlines
+  every worker at build time; a separately-shipped module cannot. Its
+  self-contained `umd` worker must be hosted at a known URL and instantiated at
+  runtime (`new Worker(url)` or fetch → Blob URL). `setWorkerOverride` must accept
+  a URL-based factory, and the manifest must carry each module's worker URL(s).
+  Cross-origin isolation (COOP/COEP, already required for SAB) constrains where
+  those can be served from.
+- **Runtime manifest.** A deployment-owned, gitignored descriptor (fetched JSON /
+  injected global / server endpoint) listing each module: ESM entry URL, worker
+  URL(s), settings, and the declared core ABI version.
+- **Per-module `register(ctx, settings)`.** Already the Level 1 groundwork — each
+  module exports a registrar that does its own `registerModule` /
+  `registerStudyImporter` / worker wiring, callable after a dynamic `import()`.
+  Level 2 reuses it verbatim; only the import and worker-creation mechanics change.
+- **Load-time integrity.** Loading arbitrary URLs as code is a supply-chain
+  surface. Constrain to an allowlist / same-origin, and/or Subresource Integrity
+  on manifest entries or a signed manifest, before this is enabled outside a
+  trusted deployment.
 
-**Note.** This is a deployment-architecture improvement, not a licensing one:
-async loading is not a GPL firewall (intimacy of coupling, not linking
+#### Implementation strategy
+
+- **A. Import-map bootstrap (the gate).** The host page emits an import map pinning
+  the shared specifiers to its own loaded core/util chunk URLs; the framework and
+  each module build as ESM with those specifiers external. Nothing else works until
+  `instanceof` holds across the boundary — prove it first with a trivial two-artifact
+  spike (host + one externally-built module sharing one `RuntimeStateManager` and
+  one event bus).
+- **B. Manifest-driven dynamic import.** The consumer `register(ctx)` fetches the
+  manifest and, per entry, `await import(/* @vite-ignore */ entry.esmUrl)`, checks
+  the ABI version (D), then calls `mod.register(ctx, entry.settings)`. A rejected
+  entry logs loudly and is skipped, never partially registered.
+- **C. Worker-by-URL.** Extend the worker-override contract to take a URL factory;
+  the module's `register` reads worker URLs from its manifest entry instead of a
+  `?raw` import. Keep the classic-worker format — the `importScripts` / dev-cascade
+  reasons documented in `standalone.ts` still apply.
+- **D. ABI handshake.** Add the ABI constant to core, bake the built-against value
+  into each module, and gate B's load on a match. Design this alongside A: together
+  they define the boundary contract, and it is the correctness backstop that must
+  exist before any module is loaded, not be bolted on after.
+
+Sequencing: A is the prerequisite for everything; until the import-map spike proves
+a single shared runtime across an independently-built artifact, B–D are premature.
+
+**Note (licensing).** This is a deployment-architecture improvement, not a licensing
+one: runtime loading is not a GPL firewall (intimacy of coupling, not linking
 mechanism), and nic-reader is Apache-2.0 via the clean room, so the old GPL
 motivation is moot.
 
