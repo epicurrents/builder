@@ -71,6 +71,93 @@ The platform roadmap tracks the consuming side under "Viewer — manifest-driven
 setup skeleton for non-demo builds"; its interest is the NPM-published, hermetic
 build. The setup design and the NPM publishing live in this repo.
 
+Config-driven module loading + data-driven file menu
+----------------------------------------------------
+
+🟢 **Priority: green** — the framework seam is ready; this is its next
+evolution. Keep the module *set* (which modules a deployment loads, and their
+config) out of the distribution and out of git, so one committed base is patched
+per deployment — the same idea as the platform's `EPICURRENTS_PROJECT` /
+`EPICURRENTS_PLUGINS` env model. Today the consumer setup
+(`setups/standalone.ts`, the platform's `base.ts`) hard-codes synchronous module
+imports, and `AppMenubar` hard-codes a per-importer file-menu branch — two
+separate hard-coded registration surfaces.
+
+The hard prerequisite is already shipped: `setups/index.ts` imports no modules
+and hands the consumer an async `register(ctx)` callback (invoked with `await`,
+so dynamic `import()` fits). Level 1 below is the near-term target; Level 2 is
+captured for later.
+
+### Level 1 — config-driven registration + data-driven menu (low risk)
+
+Modules still build in one monorepo pass (one core version, so no worker/main
+data-layout drift), but the *list* and *config* move out of git:
+
+- **Config-driven registration.** The consumer's `register(ctx)` reads a
+  gitignored module-list config (fetched JSON / injected global / server
+  endpoint) and dynamic-`import()`s only the listed packages, calling each
+  module's own `register(ctx, settings)` export (moving the ~10 lines currently
+  in `standalone.ts` into each package). `standalone.ts` stays the committed
+  all-in reference build; the platform's `base.ts` becomes the config-driven
+  consumer, where per-deployment module sets actually matter.
+
+- **Data-driven file menu.** `AppMenubar` builds its file-open sections by
+  iterating `APP.studyImporters` — no hard-coded branches. Every field is
+  already declared somewhere:
+  - **Section header** = the matching interface module's `moduleName.full`,
+    matched to the importer's modality via `moduleName.code` (on every module
+    runtime, and config-overridable). Use `full`, not `short`.
+  - **Extensions + item labels** come from the importer
+    (`studyImporter.fileTypes[].accept` + the registration label), exactly as
+    the existing menu loop already reads them.
+  - **htm and pdf are separate sections** — different media forms, so no shared
+    grouping field; each `code` gets its own section.
+  - **Section order is alphabetical** by `full` name, derived from the
+    registered modules — nothing hard-coded.
+
+  This also retires an existing drift bug: the hard-coded menu invents a
+  "Document" header that matches no module's label (htm is "Pages", pdf is
+  "Documents") and mixes `full` ("Accelerometry") with `short` ("EEG") across
+  sections. Data-driving from `moduleName` makes the labels consistent by
+  construction. Analogous to the "Module controls-bar — keyed config" item below
+  (hard-coded → data-driven), and a defensible cleanup even without async
+  loading.
+
+**Scope.** The consumer `register` callback (platform `base.ts` → config-driven;
+`standalone.ts` stays all-in); a small `register(ctx, settings)` export per
+module; `AppMenubar.vue`'s `fileContexts` builder replaced by the importer
+iteration; a gitignored module-list config schema. No new importer/module API —
+the menu consumes `moduleName` + `fileTypes`, both already registered.
+
+### Level 2 — patch a deployed base with independently-built modules (deferred)
+
+The ambitious end state: load a module built and shipped *separately* from the
+base, not co-built. Three hard problems, none fatal, all real:
+
+- **Shared core singleton.** A separately-built module must resolve
+  `@epicurrents/core` to the host's single instance (class identity for
+  `instanceof`, one `RuntimeStateManager`, one event bus) — via native import
+  maps or module federation. A module bundling its own core copy silently breaks
+  `instanceof` and splits the event bus.
+- **Version handshake.** Async loading trades the build-time single-version
+  guarantee (the monorepo compliance rule) for runtime flexibility, re-opening
+  the silent worker/main data-layout corruption that rule exists to prevent —
+  now across independently-versioned artifacts. A module must declare the core
+  semver it built against, and the host must refuse an incompatible load loudly.
+- **Workers.** Today inlined via `?raw` at build time; a separate artifact must
+  serve its (self-contained `umd`) worker at a known URL and create it at
+  runtime — turning "which modules" config into "which modules *and where their
+  worker artifacts are served*".
+
+Not required for the config-out-of-git goal (Level 1 delivers that). Worth a
+design pass before any code; the version handshake is the part to think through
+first.
+
+**Note.** This is a deployment-architecture improvement, not a licensing one:
+async loading is not a GPL firewall (intimacy of coupling, not linking
+mechanism), and nic-reader is Apache-2.0 via the clean room, so the old GPL
+motivation is moot.
+
 BiosignalAudio refactor — synthesis/playback split + three synthesis methods
 ----------------------------------------------------------------------------
 
