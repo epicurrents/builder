@@ -10,10 +10,7 @@
         "build:tsc-all": "npm run build -w scoped-event-log -w scoped-event-bus -w asymmetric-io-mutex && npm run build:tsc --workspaces --if-present",
         "build:dev": "npm run build:assets && npm run build:ohif:dev && npm run copy:all && cd interface && npm run build:app",
         "build:lib": "cd interface && npm run build",
-        "build:lib:bs": "cd interface && cross-env LAUNCHER=brainstatus npm run build:custom",
-        "build:lib:nc": "cd interface && cross-env LAUNCHER=nextcloud npm run build:custom",
-        "build:ohif:dev": "cd ohif && cross-env PUBLIC_URL=/ohif/ yarn run build && cd .. && npm run copy:ohif && node scripts/convert.js ohif",
-        "build:ohif:nc": "cd ohif && cross-env NODE_ENV=production APP_CONFIG=config/nextcloud.js PUBLIC_URL=/apps/epicurrents/ohif/ NX_SKIP_NX_CACHE=true yarn run build && cd .. && node scripts/copy.js ohif --prod && node scripts/convert.js ohif --prod",
+        "build:ohif:dev": "cd ohif && cross-env PUBLIC_URL=/ohif/ yarn run build && cd .. && npm run copy:ohif && node scripts/convert.mjs ohif",
         "clean": "node scripts/clean.mjs",
         "copy:all": "node scripts/copy.mjs",
         "copy:ohif": "node scripts/copy.mjs ohif",
@@ -22,7 +19,6 @@
         "preview": "cd interface && npm run preview",
         "setup": "node scripts/setup.mjs",
         "start": "npm run copy:workers && cd interface && npm run dev",
-        "start:bs": "npm run copy:workers && cd interface && cross-env LAUNCHER=brainstatus npm run dev",
         "update": "node scripts/update.mjs",
         "test": "npm run test --workspaces --if-present",
         "test:core": "cd epicurrents/core && vitest run --coverage",
@@ -33,6 +29,9 @@
     "keywords": [],
     "author": "Sampsa Lohi",
     "license": "Apache-2.0",
+    "engines": {
+        "node": ">=22.12.0"
+    },
     "workspaces": [
         "util/*",
         "epicurrents/*",

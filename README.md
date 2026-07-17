@@ -1,206 +1,241 @@
-Epicurrents monorepo workspace
-==============================
+# Epicurrents viewer workspace
 
-This repository contains the Epicurrents application and helper scripts used to assemble a development
-workspace from the individual Epicurrents packages. The core orchestration is implemented in
-`scripts/util.mjs` — edit that file to select which packages are cloned, built, and prepared for local
-development.
+This repository is the assembly point for building a modular
+[Epicurrents](https://github.com/epicurrents) frontend application. Epicurrents is a
+browser-based viewer for biomedical signal and imaging data — EEG, EMG, nerve conduction
+studies, DICOM, PDF, tabular data and more — built as a set of independently versioned
+packages that you compose into exactly the application you need.
 
-Contents
- - `scripts/util.mjs` — dependency map and helper utilities (copy/delete, worker paths).
- - `scripts/setup.mjs` — clones and initializes packages listed in `util.mjs`.
- - `scripts/build.mjs` — builds already-cloned dependency packages.
+You do not edit signal-processing or UI code here. Instead, this workspace clones the
+individual `@epicurrents/*` packages, builds them in the correct dependency order, and
+assembles the interface application from them. Think of it as the orchestration layer: a
+small set of Node.js scripts plus an npm workspace configuration that turn a list of
+packages into a working viewer.
 
-Quick overview
---------------
+For end-user and API documentation, see the
+[Epicurrents documentation site](https://docs.epicurrents.io). This README covers building
+and assembling the application from source.
 
-- To prepare a local development workspace, edit `scripts/util.mjs` to select which packages you want
-	to clone and build.
-- Use `npm run setup` to clone and initialize the chosen packages.
-- Use `npm run build:assets` or `npm run build:dev` to build dependent packages and assemble assets.
-- Use `npm run build:app` to build the standalone interface app or `npm run build:lib` to build the
-	interface as a consumable library.
+## What this repository contains
 
-Modifying `scripts/util.mjs`
----------------------------
+Only the orchestration lives in this repository. The actual packages are cloned into
+subdirectories (which are git-ignored) by the setup script:
 
-Open `scripts/util.mjs`. The important exported values are:
-
-- `dependencies` (Map): the package list organized by logical groups (e.g. `epicurrents`, `interface`).
-	Each map entry contains information used by `scripts/setup.mjs` and `scripts/build.mjs`:
-
-	- `packages`: array of package descriptors. Each descriptor may include:
-		- `name` (string): package folder / package name to clone.
-		- `branch` (string, optional): git branch to check out after cloning.
-		- `prebuild` (string[], optional): shell commands run before building the package.
-		- `rename` (boolean, optional): whether to rename the cloned folder to the map key.
-		- `external` (boolean, optional): if true, the script will not attempt to build/install the package.
-	- `repository` (string): base repository URL used for cloning.
-
-- `workerPaths` (array): worker/UMD copy source paths used by `copy` utilities — adjust if you add new
-	packages that ship UMD worker artifacts.
-- `interfaceDir` (string): name of the `interface` package folder.
-- `rootDir` (string): computed repository root used by the scripts.
-
-Examples
---------
-
-1) Add a package to the `epicurrents` group
-
-In `scripts/util.mjs` locate the `epicurrents` packages array and add an entry:
-
-```js
-{ name: 'foo-module' },
+```
+frontend/viewer/
+  scripts/          build / install / clone / copy / update helpers (this is the tooling)
+  package.json      npm workspace definition + build commands
+  README.md         this file
+  ROADMAP.md        planned and deferred work
+  epicurrents/      cloned @epicurrents/* packages (git-ignored)
+  interface/        cloned Vue 3 interface application (git-ignored)
+  util/             cloned standalone utility packages (git-ignored)
+  ohif/             cloned OHIF radiology viewer integration (git-ignored)
 ```
 
-After saving, run the setup for just that package:
+After a successful setup the `epicurrents/`, `interface/`, `util/` and `ohif/` directories
+are populated with independent git checkouts. Because they are git-ignored, this repository
+stays small and only tracks the tooling that assembles them.
+
+## Architecture in brief
+
+Epicurrents is a pseudo-monorepo. Every package is published to npm under the
+`@epicurrents` namespace and installed only if you need it.
+
+| Layer | Packages | Role |
+|---|---|---|
+| **Core** | `core` | Shared runtime, base classes, state manager, worker infrastructure. Everything depends on it. |
+| **File readers** | `edf-reader`, `dicom-reader`, `wav-reader`, `htm-reader`, `pdf-reader`, `csv-reader`, `api-reader` | Parse a specific file format into a structured signal/document representation, each in its own web worker. |
+| **Study modules** | `eeg-module`, `emg-module`, `ncs-module`, `acc-module`, `doc-module`, `tab-module` | Add display and interaction for one modality (Vue components, actions, settings). |
+| **Services** | `pyodide-service`, `onnx-service` | Optional capabilities in a separate worker — Python (scipy/MNE) analysis, ONNX inference. |
+| **Interface** | `interface` | The default Vue 3 application that assembles everything into a ready-to-use UI. |
+| **Utilities** | `asymmetric-io-mutex`, `scoped-event-bus`, `scoped-event-log` | Standalone helpers with no dependency on the core runtime. |
+
+A more detailed package catalogue is in the
+[library structure](https://docs.epicurrents.io) documentation.
+
+## Prerequisites
+
+- **Node.js** 22.12 or newer (Active LTS) and **npm** 10 or newer. This is required by
+  Vite 7 (`engines: ^20.19.0 || >=22.12.0`) and by the build scripts' use of
+  `import.meta.dirname` (Node 20.11+). Older Node fails in confusing ways — an undefined
+  `rootDir` rather than a clear version error — so the root `package.json` pins
+  `engines.node` to `>=22.12.0`.
+- **git** with access to the package repositories.
+- **yarn** — only if you build the optional OHIF radiology integration (OHIF uses yarn).
+- A modern **Chromium-based browser** to run the viewer (the interface requires Chromium
+  APIs).
+
+## Quick start
 
 ```bash
-npm run setup -- epicurrents/foo-module
-```
+# 1. Clone this repository and enter it
+git clone <this-repo-url> viewer && cd viewer
 
-The script will clone `https://github.com/epicurrents/foo-module` into `epicurrents/foo-module`, install
-its dependencies and run `npm run build` inside it.
-
-2) Add a `prebuild` command (example: copy PDF.js to reader)
-
-In the `pdf-reader` descriptor you may add a `prebuild` step:
-
-```js
-{ name: 'pdf-reader', prebuild: [ 'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist' ] }
-```
-
-The `prebuild` commands are executed inside the package folder before running its build.
-
-3) Mark a package as external
-
-If a package must be managed manually (e.g. large third-party repo), set `external: true`. The scripts
-will skip automatic installation and build for that package and print an informational message.
-
-Common workflows and npm commands
----------------------------------
-
-- Prepare and clone selected packages (clones everything by default):
-
-```bash
+# 2. Clone and build all the packages listed in scripts/env.mjs
 npm run setup
-```
 
-To scope the setup to a specific group or package, pass arguments after `--`:
-
-```bash
-npm run setup -- epicurrents
-npm run setup -- epicurrents/edf-reader
-npm run setup -- util
-```
-
-- Install already-cloned dependencies (run inside workspace root):
-
-```bash
-npm run instl
-```
-
-- Build dependency assets (uses `scripts/build.mjs`):
-
-```bash
-npm run build:assets
-```
-
-- Build the standalone interface application into the `interface` build directory (uses `interface/vite.config.app.ts`):
-
-```bash
-npm run build:app
-```
-
-- Build the interface as a library into the `interface` build directory (for consumption by other packages):
-
-```bash
-npm run build:lib
-```
-
-- Build a full development stack into the `interface` build directory (assets, optional OHIF viewer, copy assets, build app):
-
-```bash
-npm run build:dev
-```
-
-- Run the dev server for local development (copies workers then launches interface dev server):
-
-```bash
+# 3. Copy worker bundles into the interface and start the dev server
 npm run start
 ```
 
-- Copy worker UMD assets to `public/`:
+`npm run setup` clones each package, installs its dependencies, strips duplicated shared
+packages (see [Why cleaning matters](#why-cleaning-matters)), and builds it in dependency
+order. `npm run start` copies the compiled worker bundles into the interface and launches
+the Vite dev server.
+
+### Build outputs: library vs. standalone app
+
+Once the packages are built (`npm run build:assets` — util + interface + all epicurrents
+packages), the interface can be bundled in one of two ways depending on how you intend to
+use it:
 
 ```bash
-npm run copy:workers
+npm run build:lib      # build the interface as an embeddable library (the modular use case)
+npm run build:app      # bundle a self-contained standalone application
 ```
 
-Notes and tips
---------------
+- **`npm run build:lib`** is the primary output for a modular Epicurrents frontend. It
+  builds the interface as a consumable library (`vite build --config vite.config.lib.ts`)
+  that another application imports and mounts, so you compose the viewer into your own page
+  or product with only the modules you selected in `scripts/env.mjs`. This is the build you
+  want when embedding Epicurrents.
+- **`npm run build:app`** produces a self-contained standalone application
+  (`vite.config.app.ts`) — a ready-to-serve viewer with no host application. Use it when you
+  just want to deploy the viewer on its own.
 
-- The `scripts/setup.mjs` script will remove bundled local copies of utility packages (`@epicurrents/core`, `asymmetric-io-mutex`, `scoped-event-bus`, `scoped-event-log`) from each package before building to ensure a consistent shared version is used across the workspace.
-- If you change `workerPaths` in `scripts/util.mjs`, ensure any referenced `umd` folders exist in the installed packages (generated during build) so the copy commands succeed.
-- For local Pyodide testing, make sure the interface `SETUP.pyodideAssetPath` (see `interface/src/setups/standalone.ts`) points to a hosted static path (serving WASM over `file://` will not work).
+For a full development stack in one command (assets + optional OHIF + asset copy + app
+build), use `npm run build:dev`.
 
-Example developer flow
-----------------------
+## Choosing which packages to build
 
-1. Edit `scripts/util.mjs` to include the packages you need.
-2. Run:
+The package list is defined in **`scripts/env.mjs`** as the exported `packages` map. Each
+top-level key is a logical group (`util`, `epicurrents`, `interface`, `ohif`) and also the
+directory the group is cloned into. Edit this map to add, remove, or pin packages.
 
-```bash
-npm run setup
-npm run build:assets
-npm run copy:workers
-npm run build:app
+```js
+export const packages = new Map([
+    ['util', {
+        packages: [
+            { name: 'scoped-event-log' },
+            { name: 'scoped-event-bus' },
+            { name: 'asymmetric-io-mutex' },
+        ],
+        repository: 'https://github.com/sam-19',
+    }],
+    ['epicurrents', {
+        packages: [
+            { name: 'core' },                        // must be first
+            { name: 'eeg-module' },
+            { name: 'edf-reader', branch: 'encoder' }, // pin a branch
+            // ...
+        ],
+        repository: 'https://github.com/epicurrents',
+    }],
+    // ...
+])
 ```
 
-3. Serve or deploy the contents of the `interface/build` (or `public`) folder as needed.
+Each package descriptor supports:
 
----
-
-Monorepo package version compliance
-------------------------------------
-
-All packages under `epicurrents/` share a common build toolchain defined in `epicurrents/core/tsconfig.base.json`. Core extends it locally; every other package extends `@epicurrents/core/tsconfig.base.json` (resolved through the `@epicurrents/core` dependency), so the base is found both inside this monorepo and when a package is built standalone from its own repository.
-Deviations between packages — different TypeScript versions, different module-resolution strategies, mismatched
-`ts-loader` or webpack versions — are a documented source of hard-to-diagnose bugs. The `_outputDataFieldsLen`/
-`BiosignalMutex` corruption incident (2026-05-16) was traced back to a wrong field-layout assumption that
-propagated silently because the worker bundle was built against a different version of the code than the main
-thread.
-
-**Canonical versions (update this table when bumping):**
-
-| Tool | Version | Set in |
+| Field | Type | Meaning |
 |---|---|---|
-| TypeScript | `^5.7.0` | each `package.json` devDependencies |
-| ts-loader | `^9.5.1` | each `package.json` devDependencies |
-| webpack | `^5.73.0` | each `package.json` devDependencies |
-| tsconfig base | — | `epicurrents/core/tsconfig.base.json` (core extends it locally; others via `@epicurrents/core/tsconfig.base.json`) |
+| `name` | string (required) | Folder / package name to clone. |
+| `branch` | string | Git branch to check out (defaults to `main`). |
+| `repository` | string | Override the group's base repository URL for this one package. |
+| `prebuild` | string[] | Shell commands run inside the package folder before building it. |
+| `rename` | boolean | Rename the cloned folder to the map key (used when the repo name differs). |
+| `external` | boolean | Skip automatic install/build — the package is managed manually (e.g. OHIF). |
 
-**Rules:**
-- **Do not pin a package-specific TypeScript version** that differs from the table above. TypeScript is a
-  compiler that must agree across every package that imports from `@epicurrents/*`. A version mismatch in one
-  package silently produces structurally incompatible declaration files that type-check locally but fail at
-  runtime in the bundled output.
-- **Do not override compiler options in a package's `tsconfig.json` without a documented reason** in a comment.
-  The base config is the single source of truth; per-package overrides must be exceptional.
-- **After any toolchain version bump**, run the full type-check sweep across all packages before committing:
-  ```bash
-  cd epicurrents
-  for pkg in core api-reader dicom-reader doc-module edf-reader eeg-module emg-module \
-             htm-reader ncs-module onnx-service pdf-reader pyodide-service tab-module wav-reader; do
-      result=$(cd "$pkg" && npx tsc --noEmit 2>&1)
-      [ -z "$result" ] && echo "✓ $pkg" || { echo "✗ $pkg"; echo "$result" | head -5; }
-  done
-  ```
-- **Both build outputs must be regenerated together** after any change to shared code:
-  ```bash
-  # main-thread code (dist/):
-  npm run build:tsc
-  # worker bundles (umd/), then copy to interface:
-  npm run build:umd && node scripts/copy.mjs workers
-  ```
-  Rebuilding only one of the two leaves the other stale and can produce runtime mismatches where the main
-  thread and the worker disagree on data layouts or API signatures.
+Ordering matters: `util` packages are built before `epicurrents`, and within
+`epicurrents`, `core` must come first because every other package depends on it.
+
+### Scoping commands to a group or package
+
+Every workflow command accepts an optional scope argument after `--`:
+
+```bash
+npm run setup -- util                  # only the util group
+npm run setup -- epicurrents           # only the epicurrents group
+npm run setup -- epicurrents/edf-reader  # a single package
+```
+
+The same scoping works for `update`, `instl`, `clean`, and `build:asset`.
+
+## Command reference
+
+| Command | Script | What it does |
+|---|---|---|
+| `npm run setup` | `scripts/setup.mjs` | Clone (or fetch) each package, check out its branch, install, clean, and build. |
+| `npm run instl` | `scripts/install.mjs` | Run `npm install` in each already-cloned package. |
+| `npm run clean` | `scripts/clean.mjs` | Remove duplicated shared packages nested inside each package's `node_modules`. |
+| `npm run build:asset` | `scripts/build.mjs` | Build already-cloned packages (accepts a scope). |
+| `npm run build:assets` | `scripts/build.mjs util interface epicurrents` | Build util, interface and all epicurrents packages. |
+| `npm run update` | `scripts/update.mjs` | `git pull` each package and re-check out its pinned branch. |
+| `npm run copy:workers` | `scripts/copy.mjs workers` | Copy compiled UMD worker bundles into the interface. |
+| `npm run copy:all` | `scripts/copy.mjs` | Copy all compiled assets (OHIF, workers, package outputs) into the interface. |
+| `npm run typecheck` | `scripts/typecheck.mjs` | Run `tsc --noEmit` over every library package and print a ✓/✗ summary. |
+| `npm run start` | — | Copy workers, then launch the interface Vite dev server. |
+| `npm run build:app` | — | Build the standalone interface application. |
+| `npm run build:lib` | — | Build the interface as a consumable library. |
+| `npm run build:dev` | — | Full development stack: assets + OHIF + copy + app. |
+| `npm run test` | — | Run every package's test suite (`vitest`). |
+
+A typical from-scratch flow:
+
+```bash
+npm run setup          # clone + install + clean + build everything
+npm run copy:workers   # stage worker bundles for the interface
+npm run build:app      # produce the deployable interface bundle
+```
+
+## Why cleaning matters
+
+Every package declares `@epicurrents/core` and the shared utility packages as
+dependencies. When each package is installed on its own, npm places a private copy of those
+shared packages inside that package's `node_modules`. If those copies are allowed to remain,
+the worker bundle and the main-thread code can end up built against **different versions of
+the same shared code** — which type-checks locally but silently corrupts data at runtime
+(mismatched buffer layouts, a `Log` object missing methods, and similar).
+
+`npm run clean` (run automatically as part of `setup`) deletes the nested `@epicurrents`,
+`asymmetric-io-mutex`, `scoped-event-bus`, and `scoped-event-log` copies from each package
+so that every package resolves the single workspace-level version. **Run `npm run clean`
+again any time you install or remove packages inside a submodule.**
+
+See [ROADMAP.md](ROADMAP.md) and the documentation site for the full rationale behind the
+monorepo version-compliance rules.
+
+## Type-checking after shared-code changes
+
+After changing anything in `epicurrents/core/` (types, base classes, method signatures), run
+the full sweep to catch cross-package regressions before building:
+
+```bash
+npm run typecheck                 # every library package
+npm run typecheck epicurrents/core  # scope to one package
+```
+
+`scripts/typecheck.mjs` runs `tsc --noEmit` over every `util/*` and `epicurrents/*` package
+and exits non-zero on the first failure, so it can gate CI.
+
+## Optional: OHIF radiology integration
+
+The OHIF viewer is an `external` package — the setup script clones it but does not build it
+automatically because it uses yarn and its own toolchain. To build it into the interface:
+
+```bash
+npm run build:ohif:dev
+```
+
+## Notes and tips
+
+- For local Pyodide testing, the interface's `SETUP.pyodideAssetPath` must point at a hosted
+  static path — serving the WASM files over `file://` will not work.
+- If you change `workerPaths` in `scripts/env.mjs`, make sure the referenced `umd/` folders
+  exist in the built packages so the copy step succeeds.
+- The `scripts/` directory has its own [README](scripts/README.md) with per-script detail.
+
+## License
+
+Licensed under the Apache License 2.0 — see [LICENSE](LICENSE).

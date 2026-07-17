@@ -18,12 +18,12 @@ Additionally:
 
 ## Configuration
 
-### The `dependencies` Map
+### The `packages` Map
 
-The packages to set up are defined in [util.mjs](util.mjs) as a `Map` structure. Each entry represents a group of related packages:
+The packages to set up are defined in [env.mjs](env.mjs) as a `Map` structure. Each entry represents a group of related packages:
 
 ```javascript
-export const dependencies = new Map([
+export const packages = new Map([
     ['util', {
         packages: [
             { name: 'scoped-event-log' },
@@ -60,8 +60,8 @@ Each package entry can have the following properties:
 
 To adjust which packages are set up:
 
-1. Open [util.mjs](util.mjs)
-2. Locate the `dependencies` Map (around line 75)
+1. Open [env.mjs](env.mjs)
+2. Locate the `packages` Map
 3. Add, remove, or modify package entries as needed
 4. For packages on a specific branch, add the `branch` property
 5. For packages from a different repository, add the full `repository` URL
@@ -136,7 +136,8 @@ Pulls the latest changes from GitHub for existing packages. Optionally specify a
 
 ## File Descriptions
 
-- **`util.mjs`**: Shared utilities and the `dependencies` configuration Map
+- **`env.mjs`**: The `packages` configuration Map plus environment paths (`rootDir`, `interfaceDir`, `workerPaths`)
+- **`util.mjs`**: Shared filesystem helpers (recursive copy/delete, scope parsing)
 - **`setup.mjs`**: Clones packages from Git repositories
 - **`install.mjs`**: Installs NPM dependencies
 - **`clean.mjs`**: Removes duplicate dependencies
