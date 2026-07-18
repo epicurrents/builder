@@ -8,6 +8,7 @@ import fs from 'fs'
 import { execSync } from 'child_process'
 import { deleteFolderRecursive, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
+import { resolveProfile, makePackageFilter } from './profile.mjs'
 
 // Do not run setup if the epicurrents module namespace exists.
 //if (fs.existsSync(epicRoot) && fs.lstatSync(epicRoot).isDirectory()) {
@@ -122,6 +123,11 @@ export function initializeDependency (pkg, repository, parent) {
 
 console.info("Cloning and initializing missing packages...")
 const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
+const profile = await resolveProfile()
+const includes = makePackageFilter(profile)
+if (profile) {
+    console.info(`Restricting to profile '${profile.label || profile.name}'.`)
+}
 for (const [key, value] of packages) {
     if (!Object.hasOwn(value, 'repository')) {
         console.error(`No repository found for ${key}.`)
@@ -135,10 +141,16 @@ for (const [key, value] of packages) {
                 if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== pkg.name) {
                     return
                 }
+                if (!includes(key, pkg.name)) {
+                    return
+                }
                 initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`)
             })
         } else if (Object.hasOwn(value, 'name')) {
             if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== value.name) {
+                continue
+            }
+            if (!includes(key, value.name)) {
                 continue
             }
             initializeDependency(value, value.repository, rootDir)

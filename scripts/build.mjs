@@ -6,6 +6,7 @@ import fs from 'fs'
 import { execSync } from 'child_process'
 import { getScopeComponents, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
+import { resolveProfile, makePackageFilter } from './profile.mjs'
 
 export function buildDependency (pkg, dir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -35,18 +36,25 @@ export function buildDependency (pkg, dir) {
 }
 console.info("Building packages...")
 const scopes = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
+const profile = await resolveProfile()
+const includes = makePackageFilter(profile)
+if (profile) {
+    console.info(`Restricting to profile '${profile.label || profile.name}'.`)
+}
 for (const [key, value] of packages) {
     for (const [namespace, pkgName] of getScopeComponents(...scopes)) {
         if ((namespace === key || namespace === 'all') || !namespace.length) {
             if (Object.hasOwn(value, 'packages')) {
                 const { packages } = value
                 packages.forEach(pkg => {
-                    if (pkg.name === pkgName || !pkgName?.length) {
+                    if ((pkg.name === pkgName || !pkgName?.length) && includes(key, pkg.name)) {
                         buildDependency(pkg, `${[rootDir, key].join(sep)}`)
                     }
                 })
             } else if (Object.hasOwn(value, 'name')) {
-                buildDependency(value, rootDir)
+                if (includes(key, value.name)) {
+                    buildDependency(value, rootDir)
+                }
             }
         }
     }

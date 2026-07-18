@@ -40,6 +40,9 @@
  * repository contains multiple packages and the package name does not match the repository name.
  * The `external` parameter is used to indicate that the package is not part of the monorepo and should be installed
  * in the root directory instead of the `interface` directory.
+ * The `public` parameter (default true) marks whether the package is published from a public source. A public build
+ * profile (one in `profiles/`) may not include a package with `public: false`; such packages are available only to
+ * local editions in `profiles/local/`. See `scripts/profile.mjs`.
  *
  * The `packages` parameter is used to define multiple packages under the same key. This is useful for grouping related
  * packages together, such as all @epicurrents modules.
@@ -72,7 +75,8 @@ export const packages = new Map([
             { name: 'dicom-reader' },
             { name: 'edf-reader' },
             { name: 'htm-reader' },
-            { name: 'nic-reader' },
+            // Not published yet — only local (profiles/local/) editions may include it.
+            { name: 'nic-reader', public: false },
             {
                 name: 'pdf-reader',
                 prebuild: [

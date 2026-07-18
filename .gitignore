@@ -17,6 +17,11 @@ dist
 vendor
 *.local
 
+# Private build profiles — editions that may reference non-public packages.
+# The folder and its README stay tracked; the profile files do not.
+/profiles/local/*
+!/profiles/local/README.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
