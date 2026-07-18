@@ -21,6 +21,7 @@ import dcmWorkerSrc from '@epicurrents/dicom-reader/workers/dicom.worker.js?raw'
 import csvWorkerSrc from '@epicurrents/csv-reader/workers/csv.worker.js?raw'
 import mdWorkerSrc from '@epicurrents/htm-reader/workers/markdown.worker.js?raw'
 import pdfWorkerSrc from '@epicurrents/pdf-reader/workers/pdfjs.worker.js?raw'
+import wavWorkerSrc from '@epicurrents/wav-reader/workers/wav.worker.js?raw'
 
 /** Shared memory manager (SAB signal buffers). */
 export const memWorker = () => inlineWorker('MemoryManagerWorker', memWorkerSrc).create()
@@ -38,3 +39,5 @@ export const csvWorker = () => inlineWorker('CsvWorker', csvWorkerSrc).create()
 export const mdWorker = () => inlineWorker('MarkdownWorker', mdWorkerSrc).create()
 /** PDF reader — pdfjs needs a Blob URL string (GlobalWorkerOptions.workerSrc), not a worker instance. */
 export const pdfWorkerUrl = () => inlineWorker('PdfWorker', pdfWorkerSrc).url
+/** WAV reader (EMG). */
+export const wavWorker = () => inlineWorker('WavWorker', wavWorkerSrc).create()
