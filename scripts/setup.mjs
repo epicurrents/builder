@@ -16,7 +16,7 @@ import { resolveProfile, makePackageFilter } from './profile.mjs'
 //    process.exit(1)
 //}
 
-export function initializeDependency (pkg, repository, parent) {
+export function initializeDependency (pkg, repository, parent, ref) {
     if (!fs.existsSync(parent)) {
         console.info(`Creating missing parent directory ${parent}.`)
         fs.mkdirSync(parent, { recursive: true })
@@ -42,24 +42,27 @@ export function initializeDependency (pkg, repository, parent) {
             console.error(`Error cloning repository: ${stderr}`)
         })
     }
-    // Checkout custom branch or main branch (in case we were on custom branch before).
-    const branch = pkg.branch || 'main'
-    console.info(`Checking out branch ${branch} for package ${pkg.name}.`)
-    execSync(`cd ${pkgDir} && git checkout ${branch}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
+    // Check out the pinned commit (manifest reproduction) or the package's branch.
+    // A pinned commit is checked out detached and NOT pulled; a branch is pulled.
+    const target = ref || pkg.branch || 'main'
+    console.info(`Checking out ${ref ? `commit ${ref}` : `branch ${target}`} for package ${pkg.name}.`)
+    execSync(`cd ${pkgDir} && git checkout ${target}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
         if (err) {
-            console.error(`Error changing branch: ${err}`)
+            console.error(`Error checking out: ${err}`)
             return
         }
-        console.error(`Error changing branch: ${stderr}`)
+        console.error(`Error checking out: ${stderr}`)
     })
-    console.info(`Pulling updates from remote.`)
-    execSync(`cd ${pkgDir} && git pull --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`Error pulling from remote: ${err}`)
-            return
-        }
-        console.error(`Error pulling from remote: ${stderr}`)
-    })
+    if (!ref) {
+        console.info(`Pulling updates from remote.`)
+        execSync(`cd ${pkgDir} && git pull --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
+            if (err) {
+                console.error(`Error pulling from remote: ${err}`)
+                return
+            }
+            console.error(`Error pulling from remote: ${stderr}`)
+        })
+    }
     // Stop here if it is an external package.
     if (pkg.external) {
         console.info(`Package ${pkg.name} is external, manual installation required.`)
@@ -128,6 +131,15 @@ const includes = makePackageFilter(profile)
 if (profile) {
     console.info(`Restricting to profile '${profile.label || profile.name}'.`)
 }
+// Optional reproducibility manifest: pin every listed package to its exact commit.
+const manifestIndex = process.argv.indexOf('--manifest')
+const manifestPath = manifestIndex !== -1 ? process.argv[manifestIndex + 1] : null
+let pins = null
+if (manifestPath) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    pins = new Map(manifest.packages.map(p => [p.name, p.commit]))
+    console.info(`Reproducing from manifest '${manifestPath}' (edition ${manifest.edition}, ${pins.size} pinned packages).`)
+}
 for (const [key, value] of packages) {
     if (!Object.hasOwn(value, 'repository')) {
         console.error(`No repository found for ${key}.`)
@@ -144,7 +156,7 @@ for (const [key, value] of packages) {
                 if (!includes(key, pkg.name)) {
                     return
                 }
-                initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`)
+                initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name))
             })
         } else if (Object.hasOwn(value, 'name')) {
             if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== value.name) {
@@ -153,7 +165,7 @@ for (const [key, value] of packages) {
             if (!includes(key, value.name)) {
                 continue
             }
-            initializeDependency(value, value.repository, rootDir)
+            initializeDependency(value, value.repository, rootDir, pins?.get(value.name))
         }
         execSync('npm install --if-present', { stdio: 'inherit' })
     }

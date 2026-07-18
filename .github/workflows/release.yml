@@ -1,0 +1,97 @@
+# Release an edition.
+#
+# Triggered by a tag of the form `<edition>-v<major>.<minor>.<patch>` (e.g.
+# `eeg-v1.2.3`). Builds that edition from the packages' main branches, records a
+# reproducibility manifest pinning each package's exact commit, and attaches the
+# deployable edition (standalone HTML + lib + workers) plus the manifest to a
+# GitHub release.
+#
+# Reproducibility rests on two rules enforced here: the tag must point at a commit
+# on `main`, and every package is cloned from its `main` HEAD. The manifest then
+# captures the exact SHAs actually built, so `npm run setup -- --manifest <file>`
+# rebuilds the edition byte-for-byte later.
+#
+# Only PUBLIC editions are ever released here. The workflow clones the edition's
+# packages from their PUBLIC repositories with no credentials — it must never
+# authenticate against or clone a private repository. Two things keep it public by
+# construction: a public profile (the only kind committed to this repo, and the
+# only kind a CI checkout can see) may name only public packages, and any edition
+# that pulls a private package lives in the gitignored profiles/local/ and is built
+# locally for local use only — never published. So this workflow will only succeed
+# once an edition's packages are all public.
+
+name: Release edition
+
+on:
+  push:
+    tags:
+      - '*-v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse the tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "edition=${TAG%-v*}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#*-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the builder
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require the tag to be on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release tags must point at a commit on main (reproducibility rule)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Clone the edition's packages from their PUBLIC repositories — no credentials.
+      # A private package would fail here by design; such editions are built locally.
+      - name: Clone and build the edition's packages (from main)
+        run: npm run setup -- --profile "${{ steps.tag.outputs.edition }}"
+
+      - name: Build the edition and its manifest
+        env:
+          EPI_PROFILE: ${{ steps.tag.outputs.edition }}
+          EPI_VERSION: ${{ steps.tag.outputs.version }}
+        run: npm run build:release
+
+      - name: Package the artifacts
+        id: pkg
+        env:
+          EDITION: ${{ steps.tag.outputs.edition }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          cd "dist/${EDITION}"
+          zip -r "../${EDITION}-${VERSION}.zip" .
+          cp manifest.json "../${EDITION}-${VERSION}.manifest.json"
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.manifest.json
+          body: |
+            **Edition:** `${{ steps.tag.outputs.edition }}`  **Version:** `${{ steps.tag.outputs.version }}`
+
+            The `.zip` is the deployable edition — the standalone `index.html`, the embeddable `epicurrents-lib.*` library, its stylesheet and worker bundles.
+
+            Reproduce this exact build:
+            ```
+            npm run setup -- --manifest <the attached .manifest.json>
+            npm run build:edition
+            ```
