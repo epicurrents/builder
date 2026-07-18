@@ -103,11 +103,11 @@ export const packages = new Map([
     }],
     /** Add OHIF viewer last. */
     ['ohif', {
-        branch: '3.9/nextcloud',
+        branch: 'release/3.9',
         external: true,
         name: 'ohif',
         rename: true,
-        repository: 'https://github.com/epicurrents/ohif-viewers.git',
+        repository: 'https://github.com/OHIF/Viewers.git',
     }],
 ])
 /**
