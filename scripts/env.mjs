@@ -70,8 +70,9 @@ export const packages = new Map([
             { name: 'api-reader' },
             { name: 'csv-reader' },
             { name: 'dicom-reader' },
-            { name: 'edf-reader', branch: 'encoder' },
+            { name: 'edf-reader' },
             { name: 'htm-reader' },
+            { name: 'nic-reader' },
             {
                 name: 'pdf-reader',
                 prebuild: [
@@ -128,6 +129,7 @@ export const workerPaths = [
     ['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
     ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'htm-reader', 'umd'],
+    ['node_modules', '@epicurrents', 'nic-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pdf-reader', 'umd'],
     ['node_modules', '@epicurrents', 'wav-reader', 'umd'],
     ['node_modules', '@epicurrents', 'pyodide-service', 'umd'],
