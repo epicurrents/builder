@@ -4,13 +4,17 @@
  * Composes the core ACC module, its CSV and EDF study importers, and the
  * interface ACC UI. See setup/index.ts for why this composition lives in the
  * builder rather than in a package.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceAccModule from '@epicurrents/interface/modules/acc'
 import * as accModule from '@epicurrents/acc-module'
 import { CsvImporter, CsvWorkerSubstitute } from '@epicurrents/csv-reader'
 import { EdfImporter, EdfWorkerSubstitute } from '@epicurrents/edf-reader'
-import { csvWorker, edfWorker } from '../workers'
+import { csvWorker } from '../workers/csv'
+import { edfWorker } from '../workers/edf'
 
 /** Register the ACC module, its CSV/EDF importers and the interface ACC UI. */
 export const registerAcc = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {

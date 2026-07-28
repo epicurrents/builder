@@ -4,12 +4,15 @@
  * Composes the core EMG module, its WAV study importer (EMG data arrives as WAV,
  * not EDF), and the interface EMG UI. See setup/index.ts for why this composition
  * lives in the builder rather than in a package.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceEmgModule from '@epicurrents/interface/modules/emg'
 import * as emgModule from '@epicurrents/emg-module'
 import { WavImporter, WavWorkerSubstitute } from '@epicurrents/wav-reader'
-import { wavWorker } from '../workers'
+import { wavWorker } from '../workers/wav'
 
 /** Register the EMG module, its WAV importer and the interface EMG UI. */
 export const registerEmg = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {

@@ -20,13 +20,16 @@
  * profile's SETUP (including `activeModules`) as `__EPI_SETUP__`, and the register
  * callback runs the registrars named in `activeModules` — or every registered
  * modality when `activeModules` is empty (the full edition).
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import {
     createEpicurrentsApp as createFrameworkApp,
     type ApplicationInterfaceConfig,
     type SetupContext,
 } from '@epicurrents/interface'
-import { memWorker, montWorker, trendWorker } from './workers'
+import { memWorker, montWorker, trendWorker } from './workers/core'
 import { MODULE_REGISTRARS } from './registry'
 
 // Injected at build time by the builder's vite config from the active profile's

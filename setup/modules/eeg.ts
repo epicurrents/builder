@@ -8,13 +8,18 @@
  * `dicom-reader`) and the interface layer (`@epicurrents/interface/modules/eeg`),
  * so it lives in the builder rather than in any one package. See setup/index.ts
  * for why registration belongs to the consumer.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceEegModule from '@epicurrents/interface/modules/eeg'
 import * as eegModule from '@epicurrents/eeg-module'
 import { EdfImporter, EdfWorkerSubstitute } from '@epicurrents/edf-reader'
 import { DicomImporter, DicomWorkerSubstitute } from '@epicurrents/dicom-reader'
-import { dcmWorker, edfWorker, montWorker } from '../workers'
+import { montWorker } from '../workers/core'
+import { dcmWorker } from '../workers/dicom'
+import { edfWorker } from '../workers/edf'
 
 /** Register the EEG module, its EDF/DICOM importers and the interface EEG UI. */
 export const registerEeg = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {

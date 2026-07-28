@@ -4,12 +4,15 @@
  * Composes the core document module (registered under the `htm` key), the
  * markdown reader, and the interface document UI. See setup/index.ts for why this
  * composition lives in the builder rather than in a package.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceDocModule from '@epicurrents/interface/modules/doc'
 import * as docModule from '@epicurrents/doc-module'
 import { HtmImporter, MarkdownWorkerSubstitute } from '@epicurrents/htm-reader'
-import { mdWorker } from '../workers'
+import { mdWorker } from '../workers/htm'
 
 /** Register the document module (as `htm`), the markdown reader and the interface document UI. */
 export const registerHtm = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {
