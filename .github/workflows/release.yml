@@ -19,6 +19,9 @@
 # that pulls a private package lives in the gitignored profiles/local/ and is built
 # locally for local use only — never published. So this workflow will only succeed
 # once an edition's packages are all public.
+#
+# That guarantee is only as good as the `public` flags in scripts/env.mjs, which is
+# what the guard reads. Keep them in step with the repositories' actual visibility.
 
 name: Release edition
 
@@ -79,8 +82,10 @@ jobs:
           zip -r "../${EDITION}-${VERSION}.zip" .
           cp manifest.json "../${EDITION}-${VERSION}.manifest.json"
 
+      # Pinned to a commit: a mutable tag on a third-party action is arbitrary code running with
+      # `contents: write` on this repository.
       - name: Create the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             dist/*.zip
