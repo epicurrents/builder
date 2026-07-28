@@ -8,14 +8,23 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-epicurrents/*
-interface
-ohif
-util
-build
-dist
-vendor
+
+# Package checkouts, cloned by scripts/setup.mjs. Anchored to the repository root so a directory
+# that happens to share one of these names further down is not silently untracked.
+/epicurrents/*
+/interface
+/ohif
+/util
+/build
+/dist
+/vendor
 *.local
+
+# The workspaces are cloned, not committed, so a root lockfile can never describe a checkout that
+# anyone else has: `npm ci` cannot resolve its `link: true` entries, and a profile-scoped setup
+# clones a different subset every time. Package versions are pinned per release by
+# scripts/manifest.mjs instead.
+package-lock.json
 
 # Private build profiles — editions that may reference non-public packages.
 # The folder and its README stay tracked; the profile files do not.
