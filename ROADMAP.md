@@ -1,474 +1,128 @@
-Epicurrents viewer roadmap
-==========================
+Epicurrents builder roadmap
+===========================
 
-Planned and deferred work for the viewer workspace. Implementation-level
-detail and current architecture live in `CLAUDE.md` and `README.md`.
+Planned and deferred work for the **builder** — the repository that assembles the `@epicurrents/*` packages into per-edition releases. Architecture and conventions are in [AGENTS.md](AGENTS.md); how to build an edition is in [README.md](README.md).
 
-Framework setup + NPM publish
+Scope: how editions are defined, resolved, built, pinned and published. Work on signal processing, readers, modules or the interface belongs in the roadmap of the package that owns it — each package is its own repository.
+
+
+Dev editions and npm releases
 -----------------------------
 
-The lean, registration-driven framework setup (`setups/index.ts`), the renamed
-all-in `setups/standalone.ts`, and a splittable package build
-(`vite.config.dist.ts` + `package.json` `exports`) have shipped. The framework
-imports no modules itself; a consumer passes a `register(ctx)` callback and
-imports only the packages it needs. The as-built design is documented in the
-`setups/index.ts` header and in `CLAUDE.md`. What remains:
+🟢 **Priority: green** — the change that settles what a release means.
 
-### NPM publish (the headline — ship first)
+The builder is a development tool. Another developer running the same configuration is not expected to land on a byte-identical workspace, and paying for that would buy nothing. But the artifacts cut from it are the authoritative versions of the software, and those do need to be pinned. Splitting the two resolves the tension:
 
-Publishing the framework build as a prebuilt, versioned package is the
-high-leverage, platform-facing piece: a consumer installs a versioned package
-instead of running `scripts/setup.mjs` (which clones each module from its own git
-repo and builds in dependency order — fine locally, non-hermetic for a clean-room
-or CI build). The package is still `private: true`, version `0.0.0`. Open
-questions: scope / name (`@epicurrents/viewer`?), which artifacts ship (the UMD
-lib + worker bundles + the new `dist/` split build), versioning against the
-platform, and whether the module packages publish separately so a consumer can
-add them from npm.
+- **Dev editions** are built from the cloned package repositories. Fast to iterate, reproducible only as far as the commit pins go, and never published as releases.
+- **Releases** are built from published npm packages, where the registry versions and a lockfile do the pinning.
 
-### `.d.ts` pipeline
+**This is one mechanism with two provenances, not two build models.** The builder already consumes *built* packages: setup builds each repository (webpack for workers, tsc for the rest) and the lib build resolves `@epicurrents/*` through their `exports` maps to `dist`/`umd`, exactly as an installed package would. A workspace symlink and an installed directory resolve the same way, and `preserveSymlinks` in the lib config makes the dev layout behave like the flat one. So the mode is a source setting (`--source git|npm`), not a separate pipeline.
 
-The package build emits JS only; the module `exports` have no `types` conditions
-yet. Needs a `vue-tsc` declaration emit + `tsconfig-replace-paths` (to rewrite
-`#`-aliases for external consumers) wired to the `exports` map. The interface
-type-check is green, so the prerequisite is met.
+### Release mode is a validation gate
 
-### Consumer documentation
+The reason to run the npm mode continuously in CI is not parity — it is that release mode is strictly *stricter*, and surfaces three classes of defect the workspace structurally hides:
 
-In keeping with the project's AI-assistant-friendly philosophy — a clinician or
-researcher, not necessarily a programmer, should be able to drive setup with an
-AI assistant — the framework needs consumer-facing documentation good enough that
-an assistant can walk a non-developer through building and embedding a viewer:
+- **Duplicate core copies.** Every package declares `@epicurrents/core` as a regular `dependency` with a `^` range, and no package declares peer dependencies. Today the ranges agree so npm would install one copy; the moment one diverges, npm installs two and nests one — which is the worker/main-thread data-layout corruption the version-compliance rule exists to prevent. Dev mode *cannot* reach this state, because `clean.mjs` deletes nested copies as a matter of course. Moving `@epicurrents/core` and the three shared utilities to `peerDependencies`, plus an assertion that `npm ls @epicurrents/core` resolves to exactly one version, is the prerequisite that matters most.
+- **Phantom dependencies.** Workspace hoisting puts everything in one root `node_modules`, so a package can resolve an import it never declared. A real install gives it only what it declares. The traffic runs both ways: `edf-reader` currently declares `dotenv` and `stream-browserify` as runtime dependencies, which every consumer would install.
+- **Publish coverage.** Only what `files` and `exports` cover reaches the tarball. Core's coverage is already good — `dist/*`, `umd/*.js` and `tsconfig.base.json` all ship — but only the root export carries a `types` condition. Subpaths are bare strings, so `import { inlineWorker } from '@epicurrents/core/util'`, which is what `setup/workers/core.ts` does, gets no types from an installed package. `pdf-reader`'s `files` also has `"umd/*js"`, missing the dot.
 
-- **A setup guide** at a stable, linkable location (a `docs/` page or README
-  section) the way the platform's `docs/getting-started.md` is, so a web-based
-  assistant can read it remotely. Covers: installing the package, the `register`
-  callback, a bare zero-module build, a typical build (e.g. EEG + PDF), and how
-  to embed the result.
-- **A documented module catalogue** derived from the `setups/index.ts` header
-  (spec → what it enables → file formats → packages), so the catalogue and the
-  code cannot drift.
-- **Copy-paste examples** for the common cases (bare shell, single modality,
-  modality plus analysis service).
+### Prerequisites
 
-The bar: someone who cannot read TypeScript, paired with an AI assistant pointed
-at this documentation, can produce a working viewer build with exactly the
-modules they need.
+1. `peerDependencies` for `@epicurrents/core`, `asymmetric-io-mutex`, `scoped-event-bus`, `scoped-event-log` in every package.
+2. `types` conditions on the subpath exports, not just the root.
+3. Fix the `pdf-reader` `files` glob.
+4. Decide whether the three utilities are republished under the `@epicurrents` scope. They are currently unscoped and come from a personal account, so publishing scoped packages that depend on them ties the org's release integrity to a personal namespace — and it is a one-way door once versions are out.
 
-### Other follow-ups
+### What this does to the manifest
 
-- **CSS delivery.** A single `dist/style.css` is emitted and exposed via the
-  `./style.css` export; the consumer imports it manually — no auto-injection.
-- **Setup tests.** A bare-shell smoke test plus one asserting that only the
-  registered modules load (and unknown specs warn rather than throw).
-- **Platform migration.** `ViewerPlugin.extraSetup` / `rebuild-frontend.sh` still
-  use the all-in build; moving the platform to a lean `register`-callback build
-  is future work.
+The manifest survives with different content per mode, and records which mode produced it: commit pins for a dev edition, resolved package versions plus a lockfile hash for a release. Dev editions stay out of GitHub Releases entirely — workflow artifacts, or a `-dev.<sha>` suffix — so "authoritative" keeps its meaning.
 
-### Relationship to the platform
 
-The platform roadmap tracks the consuming side under "Viewer — manifest-driven
-setup skeleton for non-demo builds"; its interest is the NPM-published, hermetic
-build. The setup design and the NPM publishing live in this repo.
-
-Config-driven module loading + data-driven file menu
+Centralise the `__EPICURRENTS__` declaration in core
 ----------------------------------------------------
 
-🟢 **Priority: green** — the framework seam is ready; this is its next
-evolution. Keep the module *set* (which modules a deployment loads, and their
-config) out of the distribution and out of git, so one committed base is patched
-per deployment — the same idea as the platform's `EPICURRENTS_PROJECT` /
-`EPICURRENTS_PLUGINS` env model. Today the consumer setup
-(`setups/standalone.ts`, the platform's `base.ts`) hard-codes synchronous module
-imports, and `AppMenubar` hard-codes a per-importer file-menu branch — two
-separate hard-coded registration surfaces.
+🟢 **Priority: green** — small, overdue, and pays for itself immediately.
 
-The hard prerequisite is already shipped: `setups/index.ts` imports no modules
-and hands the consumer an async `register(ctx)` callback (invoked with `await`,
-so dynamic `import()` fits). Level 1 (data-driven menu) is done; Level 1.5 (the
-per-project build) is the near-term implementation; Level 2 (runtime-loaded
-modules) is captured below for later.
+All 17 packages carry their own `globals.d.ts` declaring the shape of `window.__EPICURRENTS__`, and they have already drifted: 21 lines in `acc-module`, 34 in most readers, 42 in `wav-reader` and `ncs-module`, 59 in `pyodide-service`. Seventeen subtly different opinions about one runtime object, none of which the compiler can reconcile.
 
-### Level 1 — config-driven registration + data-driven menu (low risk)
+Core cannot be the source of truth today for a mechanical reason: `EpicurrentsGlobal` is a bare `type` — not exported — declared inside a `.d.ts` that tsc consumes as ambient input and never emits. Nothing reaches `dist`, and no `declare global` ships at all. That is presumably why every package hand-rolls it.
 
-Modules still build in one monorepo pass (one core version, so no worker/main
-data-layout drift), but the *list* and *config* move out of git:
+The work:
 
-- **Config-driven registration.** The consumer's `register(ctx)` reads a
-  gitignored module-list config (fetched JSON / injected global / server
-  endpoint) and dynamic-`import()`s only the listed packages, calling each
-  module's own `register(ctx, settings)` export (moving the ~10 lines currently
-  in `standalone.ts` into each package). `standalone.ts` stays the committed
-  all-in reference build; the platform's `base.ts` becomes the config-driven
-  consumer, where per-deployment module sets actually matter.
+1. Export the type from core and actually ship it — move it into an emitted module, or add the declaration file to the emit.
+2. Have core ship the `declare global` itself. Ambient declarations propagate to every consumer, so one copy types the whole graph and the packages delete their `globals.d.ts` outright rather than importing the type and re-declaring the window.
+3. Decide the field's optionality deliberately. A non-optional `__EPICURRENTS__` lies about the window before the app boots; making it optional forces `?.` or `!` at every use site, and the codebase is currently inconsistent about that anyway. The next item changes the answer — if the global object is created at module-evaluation time, the field is genuinely always present and only its *contents* are lifecycle-dependent.
 
-- **Data-driven file menu.** `AppMenubar` builds its file-open sections by
-  iterating `APP.studyImporters` — no hard-coded branches. Every field is
-  already declared somewhere:
-  - **Section header** = the matching interface module's `moduleName.full`,
-    matched to the importer's modality via `moduleName.code` (on every module
-    runtime, and config-overridable). Use `full`, not `short`.
-  - **Extensions + item labels** come from the importer
-    (`studyImporter.fileTypes[].accept` + the registration label), exactly as
-    the existing menu loop already reads them.
-  - **htm and pdf are separate sections** — different media forms, so no shared
-    grouping field; each `code` gets its own section.
-  - **Section order is alphabetical** by `full` name, derived from the
-    registered modules — nothing hard-coded.
-
-  This also retires an existing drift bug: the hard-coded menu invents a
-  "Document" header that matches no module's label (htm is "Pages", pdf is
-  "Documents") and mixes `full` ("Accelerometry") with `short` ("EEG") across
-  sections. Data-driving from `moduleName` makes the labels consistent by
-  construction. Analogous to the "Module controls-bar — keyed config" item below
-  (hard-coded → data-driven), and a defensible cleanup even without async
-  loading.
-
-**Scope.** The consumer `register` callback (platform `base.ts` → config-driven;
-`standalone.ts` stays all-in); a small `register(ctx, settings)` export per
-module; `AppMenubar.vue`'s `fileContexts` builder replaced by the importer
-iteration; a gitignored module-list config schema. No new importer/module API —
-the menu consumes `moduleName` + `fileTypes`, both already registered.
-
-### Level 1.5 — per-project viewer build (near-term implementation, chosen 2026-07-17)
-
-The pragmatic stand-in for Level 2, and the path actually being built. It stays
-inside a single build pass (Level 1's guarantee — one core version, workers
-inlined at `?raw` build time) but lets the active deployment's project contribute
-its own modules without the generic base carrying them.
-
-Shape: the platform's `base.ts` registers only the stable modalities (EEG + EDF +
-DICOM). The base build is parametrised by the active project (`VITE_PROJECT`,
-mirroring the SPA's existing build-time project selection in
-`frontend/src/projects/active.ts`); when a project declares a viewer overlay, its
-`register(ctx)` — importing the project-specific reader package and its worker
-`?raw` — is bundled in and run after the base registration, emitting
-`viewer-dist/<project>/` instead of only `viewer-dist/base/`. The Nicolet `.e`
-reader moves out of `base.ts` into the edu project's overlay this way: nic bytes
-ship only in edu's build, and the generic base stays clean.
-
-What it deliberately does not solve, and why it is not yet Level 2: modules are
-still co-built with the base in one pass, so there is no runtime load, no
-separately-versioned artifact, and none of the three hard problems below. It
-covers "this module belongs with this project" but not "load a module shipped
-independently of the base." When only the former is needed — the edu/nic case —
-this is the whole answer; Level 2 is for third-party or hot-swappable modules.
-
-### Level 2 — patch a deployed base with independently-built modules (deferred)
-
-The ambitious end state: load a module built and shipped *separately* from the
-base — a third-party reader, or a module hot-added to a running deployment without
-rebuilding the base bundle. The module set, and each module's config, lives in a
-deployment-owned, gitignored runtime manifest; the base fetches it at startup and
-pulls in only what it lists. This is the "config out of git" goal realised at
-runtime rather than build time (Level 1.5 realises it at build time).
-
-#### Requirements
-
-- **One shared core instance.** A separately-built module must resolve
-  `@epicurrents/core` (and the shared `scoped-event-bus` / `scoped-event-log` /
-  `asymmetric-io-mutex`) to the host's *already-loaded* copy, not bundle its own.
-  Class identity backs `instanceof`, and there must be exactly one
-  `RuntimeStateManager`, one event bus, one `SETTINGS`. A second core copy
-  silently splits the event bus and breaks every `instanceof`. Delivered by native
-  ESM import maps (pin the shared specifiers to the host's chunk URLs) or a
-  module-federation shared-singleton graph, with the module built against those
-  specifiers as externals.
-- **Version / ABI handshake.** Runtime loading trades away the monorepo's
-  build-time single-version guarantee, reopening the worker/main data-layout
-  corruption that guarantee exists to prevent — now across independently-versioned
-  artifacts. Core must expose a data-layout / ABI version, distinct from its npm
-  semver and bumped only when the shared buffer layouts or worker message
-  contracts change; each module records the value it built against; the host
-  refuses a mismatch loudly at load rather than proceeding into silent corruption.
-- **Worker artifacts served by URL.** Level 1's `?raw` + `inlineWorker` inlines
-  every worker at build time; a separately-shipped module cannot. Its
-  self-contained `umd` worker must be hosted at a known URL and instantiated at
-  runtime (`new Worker(url)` or fetch → Blob URL). `setWorkerOverride` must accept
-  a URL-based factory, and the manifest must carry each module's worker URL(s).
-  Cross-origin isolation (COOP/COEP, already required for SAB) constrains where
-  those can be served from.
-- **Runtime manifest.** A deployment-owned, gitignored descriptor (fetched JSON /
-  injected global / server endpoint) listing each module: ESM entry URL, worker
-  URL(s), settings, and the declared core ABI version.
-- **Per-module `register(ctx, settings)`.** Already the Level 1 groundwork — each
-  module exports a registrar that does its own `registerModule` /
-  `registerStudyImporter` / worker wiring, callable after a dynamic `import()`.
-  Level 2 reuses it verbatim; only the import and worker-creation mechanics change.
-- **Load-time integrity.** Loading arbitrary URLs as code is a supply-chain
-  surface. Constrain to an allowlist / same-origin, and/or Subresource Integrity
-  on manifest entries or a signed manifest, before this is enabled outside a
-  trusted deployment.
-
-#### Implementation strategy
-
-- **A. Import-map bootstrap (the gate).** The host page emits an import map pinning
-  the shared specifiers to its own loaded core/util chunk URLs; the framework and
-  each module build as ESM with those specifiers external. Nothing else works until
-  `instanceof` holds across the boundary — prove it first with a trivial two-artifact
-  spike (host + one externally-built module sharing one `RuntimeStateManager` and
-  one event bus).
-- **B. Manifest-driven dynamic import.** The consumer `register(ctx)` fetches the
-  manifest and, per entry, `await import(/* @vite-ignore */ entry.esmUrl)`, checks
-  the ABI version (D), then calls `mod.register(ctx, entry.settings)`. A rejected
-  entry logs loudly and is skipped, never partially registered.
-- **C. Worker-by-URL.** Extend the worker-override contract to take a URL factory;
-  the module's `register` reads worker URLs from its manifest entry instead of a
-  `?raw` import. Keep the classic-worker format — the `importScripts` / dev-cascade
-  reasons documented in `standalone.ts` still apply.
-- **D. ABI handshake.** Add the ABI constant to core, bake the built-against value
-  into each module, and gate B's load on a match. Design this alongside A: together
-  they define the boundary contract, and it is the correctness backstop that must
-  exist before any module is loaded, not be bolted on after.
-
-Sequencing: A is the prerequisite for everything; until the import-map spike proves
-a single shared runtime across an independently-built artifact, B–D are premature.
-
-**Note (licensing).** This is a deployment-architecture improvement, not a licensing
-one: runtime loading is not a GPL firewall (intimacy of coupling, not linking
-mechanism), and nic-reader is Apache-2.0 via the clean room, so the old GPL
-motivation is moot.
-
-BiosignalAudio refactor — synthesis/playback split + three synthesis methods
-----------------------------------------------------------------------------
-
-**Goal.** Split `BiosignalAudio` into (a) a playback engine and (b) pluggable
-*synthesis methods* that each turn a signal into an `AudioBuffer`, rendered with
-`OfflineAudioContext`. Add three methods: direct playback (EMG's current
-behaviour), brain-stethoscope carrier modulation (ACC entrainment audio), and a
-spectral constant-tone. EMG keeps working via the direct method; ACC gains
-audio. All in `@epicurrents/core` — no new package, no worker service.
-
-### Current state
-
-`core/src/assets/media/BiosignalAudio.ts` conflates synthesis and playback.
-`setSignals(length, sampleRate, ...signals)` stores raw data; `loadBuffer()`
-normalises it into an `AudioBuffer` (against `sampleMaxAbsValue`); and
-`play(position, gain)` / `pause` / `stop` / `setGain` + `currentTime` +
-play-ended/started callbacks drive playback through
-`AudioContext → AudioBufferSourceNode → gain → DynamicsCompressor`. The sole
-consumer is `EmgRecording` (`new BiosignalAudio` → `setSignals` → `play`). ACC
-has none. Public surface to preserve: `play/pause/stop/setGain`, `currentTime`,
-`duration`, `playbackRate`, `isPlaying`, the play-ended/started callbacks, and
-`loadFile`.
-
-### Target architecture
-
-- **Player** (refactored `BiosignalAudio`, or a `BiosignalAudioPlayer`): owns the
-  live `AudioContext`, source, gain, compressor. Gains `setBuffer(AudioBuffer)`;
-  keeps `play/pause/stop/seek`, `currentTime`, `playbackRate`, `setGain`,
-  callbacks. Plays *any* buffer — no knowledge of how it was made.
-- **Synthesis** — an `AudioSynthesizer` contract:
-  ```ts
-  interface AudioSynthesizer {
-      synthesize (signals: Float32Array[], sampleRate: number, opts?: object): Promise<AudioBuffer>
-  }
-  ```
-  Each method renders with `OfflineAudioContext` (faster-than-real-time, off the
-  UI thread, no worker). A registry maps a key → synthesizer so the recording/UI
-  can pick the method.
-- **Flow**: recording picks method + options → `synth.synthesize(signals, sr, opts)`
-  → `player.setBuffer(buf)` → `player.play()`. EMG and ACC converge on one player.
-
-### Synthesis methods
-
-1. **`direct` — normalised playback + optional EQ.** Reproduces today's behaviour
-   (normalise signal against `sampleMaxAbsValue` → buffer). Optional EQ is a
-   `BiquadFilterNode` chain in the offline graph (HP/LP/peaking to shape the
-   sound); optional playback-rate/resample to lift sub-audible content. EMG's
-   path: keep `setSignals`/`loadBuffer` working by delegating to `direct` so EMG
-   is unbroken.
-2. **`stethoscope` — carrier modulation (Ceribell / brain-stethoscope style).**
-   Time-preserving, natural-tempo. An `OscillatorNode` whose `frequency` and a
-   `GainNode` whose `gain` are automated via `setValueCurveAtTime` from curves
-   derived from the signal — amplitude envelope → loudness, and optionally
-   instantaneous frequency/power → carrier pitch. Light main-thread DSP derives
-   the curves (envelope via rectify+smooth or Hilbert; frequency via
-   zero-crossing or STFT peak); `OfflineAudioContext` renders the modulated
-   carrier. This is ACC's entrainment audio.
-3. **`spectral-tone` — constant tone from a sample's spectrum, optional speed-up.**
-   Take a low-noise window → Hann window → FFT → pick the dominant peak(s) →
-   additively synthesise a steady tone at those frequencies, scaled into the
-   audible band by a multiplicative speed-up factor. Renders as a sum of
-   `OscillatorNode`s (or a precomputed `Float32Array`) offline. See feedback.
-
-### Feedback on method 3 (spectral-tone)
-
-- Useful as a **spectral signature**: turns "what's the dominant rhythm in this
-  clean window" into a stable, comparable pitch — good for hearing/comparing
-  tremor frequency or as a steady entrainment target.
-- **Additive over single-peak.** A lone peak is a pure sine — clean but
-  timbre-less. Sum the top-N magnitude peaks (small N, ~3–8) with amplitudes
-  from the spectrum to keep the spectral character; more informative.
-- **Mapping must be multiplicative (the "speed-up").** Scale all peak
-  frequencies by one factor k so harmonic ratios are preserved (a true sped-up
-  timbre). An additive shift distorts the ratios — avoid. Pick k to land the
-  fundamental in a comfortable band (~200–800 Hz).
-- **It is a snapshot, not dynamic** — complementary to `stethoscope` (which
-  tracks change), not a replacement. Label it so users know it discards temporal
-  evolution; that stability is the feature.
-- **Window selection is upstream**: manual (user selects a clean span) or auto
-  (lowest-variance / highest-SNR window). The synth just takes the window.
-- **DSP**: Hann window before FFT; magnitude-only (phase discarded — fine for a
-  steady tone); a small radix-2 FFT (or a DFT for short windows) is plenty light
-  for the main thread.
-
-### Steps
-
-1. Extract the player: move play/pause/stop/seek/gain/callbacks/currentTime into
-   it; add `setBuffer`. Split the `AudioRecording` type into `AudioPlayer` +
-   `AudioSynthesizer` (or keep `AudioRecording` for the player).
-2. Add the `AudioSynthesizer` interface + an `OfflineAudioContext` helper
-   (build graph → `startRendering()` → `AudioBuffer`).
-3. Implement `direct` (normalisation + optional EQ); make EMG's
-   `setSignals`/`loadBuffer` delegate to it; verify EMG audio still plays.
-4. Implement `stethoscope` (envelope + optional frequency curves → carrier
-   modulation); wire ACC to it.
-5. Implement `spectral-tone` (windowed FFT → additive resynthesis + speed-up).
-6. Method registry + a per-method options type; expose method choice through the
-   ACC (and EMG) recording/UI.
-7. Tests (extend `core/tests/assets/BiosignalAudio.test.ts`): each synthesizer
-   returns a finite, non-empty `AudioBuffer` of the expected length/sampleRate
-   for a known input; `direct` matches the pre-refactor normalisation; player
-   plays/pauses/seeks a given buffer.
-
-### Notes
-
-- No Web Worker / `*-service` package: synthesis is light and one-shot, and
-  `OfflineAudioContext` renders off the UI thread natively. Revisit only if a
-  streaming/real-time mode is ever added.
-- Entirely within `@epicurrents/core` (`assets/media`); EMG and ACC consume it.
-  No new package, no cross-package migration beyond EMG's internal call swap.
-
-Module controls-bar — keyed config instead of static-index array
-----------------------------------------------------------------
-
-**Problem.** Each module's controls component (`AccControls`, `EegControls`,
-`EmgControls`, `NcsControls`, `PdfControls`, `TabControls`, `HtmControls`)
-builds an array of `ControlElement` descriptors, and `constructControls()`
-reads and updates them by **hardcoded array index** (`accControls[5]`,
-`accControls[6]`, …). Inserting, removing, or reordering a control shifts every
-later index, so new controls must be appended to the end and each per-index
-update branch is brittle.
-
-**Minimum fix — done in ACC, the reference example.** `AccControls`
-([interface/src/app/modules/acc/components/AccControls.vue](interface/src/app/modules/acc/components/AccControls.vue))
-now keys controls by `id`: `constructControls` resolves each descriptor through
-a `control(id)` helper and gates each build block with `wants(id)`, instead of
-indexing `accControls[N]`. That is what let the audio + video buttons be
-reordered freely (audio left of the examine/annotate block, video toggle
-between) — exactly the move the old index scheme made brittle. Convert the
-remaining six modules (`EegControls`, `EmgControls`, `NcsControls`,
-`PdfControls`, `TabControls`, `HtmControls`) to the same pattern; copy the
-`control` / `wants` shape from `AccControls`.
-
-**Stretch.** Redesign the controls system so a control set can be declared
-externally — a project plugin contributes its controls through config rather
-than editing a module's `*Controls.vue`. This aligns the controls surface with
-the project-plugin extension model used elsewhere.
-
-**Scope.** The minimum fix is per-module — the `constructControls` body in each
-of the seven controls components, applied independently; **ACC is converted,
-six remain**. The generic `ControlsBar` is unchanged by it (it consumes the
-descriptor arrays the same way regardless of how a module builds them); only
-the Stretch (external/config-driven declaration) touches the shared model.
+Type-only imports erase, so none of this adds a byte to any bundle. It is also the prerequisite for the plugin API below.
 
 
-Data-unit-duration-driven signal-cache storage
-----------------------------------------------
+Plugin API via the runtime global
+---------------------------------
 
-🟡 **Priority: yellow** — the right way forward, but deferred. This is a
-cross-cutting change to the SAB cache layout; the viewer must stay stable for
-the next couple of weeks, so do not start it inside that window.
+🟡 **Priority: yellow** — deferred, but tractable in a way the previous framing was not.
 
-**State.** `BiosignalMutex` was designed to store its range bounds
-(`RANGE_START` / `RANGE_END` / `RANGE_ALLOCATED`, all `Int32`) as **data-unit
-counts**, with a separate `DATA_UNIT_DURATION` (`Int32`, milliseconds) field
-carrying the unit duration so counts convert back to time. The second half was
-never wired: every `initSignalBuffers` call leaves `dataUnitDurationMs` at its
-`1000` default, and callers pass `dataLength = _totalDataLength` **in seconds**.
-So the cache effectively assumes a fixed 1-second unit grid and `RANGE_END`
-holds whole seconds in an `Int32`.
+The goal is that a developer takes a prebuilt edition — say the `eeg` release — and plugs in an additional file reader or study module without rebuilding it.
 
-**Consequence.** A recording's total data length must land on whole seconds or
-`RANGE_END` truncates — out-of-bounds insert warnings, the last partial second
-lost. The CSV reader works around it with `ceil(sampleCount / samplingRate)`;
-that padded count leaking into the *reported* recording length was the
-phantom-tail bug, now resolved by reporting the true `_totalRecordingLength`
-while keeping the padded `_totalDataLength` for the cache. `EdfReader` has **no
-equivalent guard**: an EDF whose `dataRecordCount × dataRecordDuration` isn't a
-whole number of seconds (e.g. sub-second records that don't sum to an integer)
-hits the same truncation. Sub-millisecond record durations are a further
-casualty, since the millisecond field can't represent them — currently moot
-only because the field is unused.
+The seam already exists and was designed for this. Core's own declaration explains why the runtime lives on `window`: it is "a workaround for cases, where different modules may implement different versions of the core package and thus the imported `SETTINGS` may not point to the same object." Assets read `window.__EPICURRENTS__.APP` and `.EVENT_BUS`; the services read `RUNTIME.SETTINGS` and `RUNTIME.WORKERS`. Import maps and module federation are heavier machinery for a problem this codebase already solves its own way.
 
-**Finish it.** Populate `DATA_UNIT_DURATION` with the real record duration
-through `initSignalBuffers` / `setupCache`, pass range values as true data-unit
-counts rather than seconds, and route every unit↔time conversion through the
-stored duration. That drops the 1-second assumption, lets the CSV reader remove
-its `ceil` (and the `_totalRecordingLength` decoupling band-aid), and makes EDF
-correct for any record duration.
+### What has to be added
 
-**Scope.** `BiosignalMutex`, `GenericSignalReader` (setup, cache-fill, and the
-`_cacheTimeToRecordingTime` / `_recordingTimeToCacheTime` conversions),
-`MontageProcessor`, and the worker substitutes — plus contract coverage for a
-fractional-second EDF and a non-1 s CSV. When it lands, update the EDF docs
-(edf-reader README + docs.epicurrents.io) to drop the whole-second /
-sub-millisecond caveat.
+**Constructors on the global.** Runtime state is not the blocker — class identity is. Every plugin-shaped class extends a core base class (`EdfReader extends GenericSignalReader`, `EegRecording extends GenericBiosignalResource`, `EdfWorkerSubstitute extends ServiceWorkerSubstitute`, and so on). `extends` uses the name in a *value* position, so a plugin needs the constructor at runtime. If it bundles its own copy there are two `GenericBiosignalResource` classes and every host-side `instanceof` fails on plugin instances. Exposing the base classes on the global — `__EPICURRENTS__.CLASSES` — lets a plugin destructure them at module scope and subclass normally, with no import map and no bundler coordination. This is a runtime change to core, separate from the type work above.
+
+**A deliberate, small class surface.** Whatever goes in `CLASSES` becomes a published ABI that cannot be refactored freely. Include the base classes a plugin actually extends, not all of core.
+
+**Creation at module-evaluation time.** The global object is currently created inside the `Epicurrents` constructor, which is why everything guards against it being undefined. Separate the two concerns: create the container (with null fields) in a leaf module evaluated for its side effect, and keep populating `APP` / `EVENT_BUS` / `RUNTIME` in the constructor. ES module evaluation is depth-first post-order, so a dependency-free leaf module runs before every module that imports it. The rule that keeps this sound is that **the classes must never import the globals module** — they read `globalThis.__EPICURRENTS__` lazily inside method bodies, while the globals module imports the classes to register them. That direction is acyclic; the reverse deadlocks on partially-initialised bindings.
+
+**A plugin-host entry point.** Populating `CLASSES` eagerly means importing every registered class, which makes core non-tree-shakeable and fights the per-edition trimming the builder exists to do. Gate it behind a separate entry (`@epicurrents/core/plugin-host`) so editions that do not accept plugins stay trimmed.
+
+**An ABI handshake, in two places.** The `if (typeof … === 'undefined')` guard means the first core to load wins, so a plugin always gets the host's classes — identity is safe. What is not safe is *shape*: a plugin built against an older core can call a method that no longer exists or pass the wrong argument shape. So the check belongs at plugin registration, not only in workers. Core exposes a data-layout/ABI version distinct from its npm semver, bumped only when shared buffer layouts, worker message contracts or the `CLASSES` surface change; the host refuses a mismatch loudly.
+
+**The worker realm separately.** A worker is a different JS realm with its own globals, so none of the above reaches it. Plugin readers ship self-contained worker bundles today — `edf-reader`'s is 250 KB, which is core's worker-side code baked in — so a plugin's worker carries its own copy of the SAB layout, the commission protocol and the mutex, and nothing structural forces agreement with the host. Either the host serves its core worker bundle at a known URL for plugin workers to `importScripts`, or the worker announces its ABI version at commission handshake and the host refuses a mismatch.
+
+**Load-time integrity.** Loading arbitrary URLs as code is a supply-chain surface. It needs an allowlist or same-origin restriction, and Subresource Integrity on manifest entries or a signed manifest, before being enabled outside a trusted deployment.
+
+### Open question
+
+Whether core's base classes have import-time side effects or circular dependencies that complicate a flat `CLASSES` map. Worth a spike before committing to the shape.
 
 
-Documentation restructure (AGENTS.md / CLAUDE.md split)
-------------------------------------------------------
+Make the default edition explicit
+---------------------------------
 
-🟢 **Priority: green** — deferred until the in-flight settings-event-bus work
-lands, then worth doing.
+🟢 **Priority: green** — small, and removes a sharp edge.
 
-**Why.** `CLAUDE.md` is gitignored (per-developer, unshareable), yet it holds
-the only written record of the workspace conventions and per-package
-architecture — so edits to it never reach other developers. Mirror the
-platform's split: a committed, tool-agnostic `AGENTS.md` with a gitignored
-`CLAUDE.md` that just imports it (`@AGENTS.md`).
+A profile with an empty `activeModules` (and a build with no profile at all) means "every registrar in `setup/modules/`". Some registrars compose packages that are not public, and rollup has to resolve a static import before it can tree-shake what the import provides — so the untrimmed build requires every package to be installed, including non-public ones. That is a maintainer-only build masquerading as the default.
 
-**Scope it in two tiers**, as the platform does (lean `AGENTS.md` + per-app
-READMEs), so no single file grows unbounded:
-
-- Workspace `frontend/viewer/AGENTS.md` — cross-cutting only: version
-  compliance, the build / test / `npm run typecheck` workflow, dependency-
-  direction invariants (util is upstream of core, never the reverse),
-  worker-bundle rules, comment conventions, and the platform-integration
-  event-bus notes.
-- Per-package `AGENTS.md` — each significant package (`core`, `interface`,
-  `edf-reader`, `eeg-module`, …) carries its own, committed in that package's
-  repo, holding its architecture and gotchas.
-
-**Mostly classify-and-relocate + prune.** Today's `CLAUDE.md` mixes durable
-conventions, per-package architecture, and transient session logs ("Analysis
-roadmap (sessions)", "Session N deep-dive findings"). Conventions move to the
-workspace `AGENTS.md`; architecture to the owning package; the session-log
-framing is dropped, keeping the durable content and cutting the stale.
-
-**First step.** A read-only audit of `CLAUDE.md` against the package layout,
-producing a proposed file-by-file split for review before anything is written —
-the scoping calls (which packages warrant a file, what is stale) need sign-off.
-Update this file's intro line, which currently points readers at `CLAUDE.md`,
-once done.
+Either drop the "empty means everything" rule and have every profile name its modules, or generate the registry from the module files that are actually present and resolvable. The first is simpler and more honest; the second keeps the convenience. Either way the failure should be a clear message at profile load, not a module-resolution error deep in a bundle build.
 
 
-Converge WA form-control directives on the reactive-object binding
-------------------------------------------------------------------
+Registrars for the remaining modalities
+---------------------------------------
 
-🟢 **Priority: green** — non-urgent; do it when the viewer starts wanting
-Composition-API components.
+🟢 **Priority: green** — mechanical, gated on the packages.
 
-**Why.** The viewer's `v-property="'name'"` directive (`src/util/wa-directive.ts`)
-binds to the component **instance** property, so it resolves only under the
-Options-API / SFC model. The platform's equivalent binds to a reactive object
-(`v-wa="[reactiveObject, 'key']"`) and works under both Options and Composition
-API. Until the viewer adopts the reactive-object binding, any viewer component
-using WA form controls (`wa-input` / `wa-switch` / `wa-checkbox` / `wa-select` /
-`wa-combobox` / `wa-textarea`) is locked to Options API.
+`setup/registry.ts` has registrars for acc, eeg, emg, htm and pdf. The `ncs` and `tab` modules have no finished study importer, so no registrar can compose them yet and they are deliberately absent from the profiles: shipping the package without a registrar clones and builds code that nothing registers. Add the registrar and the profile entry together, once each package's importer lands.
 
-**Scope.** Switch `v-property` to the `[reactiveObject, 'key']` binding shape,
-convert each usage from a component ref to a `reactive({})` object + key, and
-fold the directive into the shared implementation. Data→element reactivity is
-already handled by a `watch` on the bound value, so no reactivity regression.
+
+Consumer documentation
+----------------------
+
+🟡 **Priority: yellow** — worth doing once the build model settles.
+
+A clinician or researcher, not necessarily a programmer, should be able to produce a viewer build with exactly the modules they need — working with an AI assistant pointed at the documentation. That needs:
+
+- A setup guide at a stable, linkable location a web-based assistant can read remotely: prerequisites, defining a profile, building an edition, embedding the result.
+- A module catalogue derived from the registrars rather than maintained by hand, so the catalogue and the code cannot drift: modality, what it enables, the file formats it opens, the packages it pulls in.
+- Copy-paste examples for the common cases — a single modality, a modality plus the analysis service, the full edition.
+
+
+Tests and CI
+------------
+
+🟡 **Priority: yellow** — nothing currently gates a change to this repository.
+
+`.github/workflows/` has only the release workflow. There is no check on a pull request, and the builder has no tests of its own even though its scripts encode non-obvious rules — profile resolution, the public/non-public split, scope parsing, manifest pinning.
+
+- **Profile and argument tests.** The public-profile guard and the scope/option parsing are exactly the kind of logic that fails silently: a mis-parsed option once made `--profile <name>` select nothing and exit successfully.
+- **An edition smoke test.** Build an edition in CI and assert the output shape — the lib, the stylesheet, `index.html`, the worker chunks — and that a trimmed edition really does exclude the modules it did not select.
+- **A pull-request workflow** running those plus `npm run typecheck`.
