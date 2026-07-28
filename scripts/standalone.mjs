@@ -9,8 +9,12 @@
  * dist as ESM (which would clash on vite's `__vitePreload` helper), so no
  * re-bundling is needed.
  *
- * Run after the lib build: `EPI_PROFILE=<name> node scripts/standalone.mjs`
- * (or via the `build:app` script, which chains the two).
+ * Run after the lib build: `EPI_PROFILE=<name> node scripts/standalone.mjs`. Normally you do not
+ * run it directly — `scripts/edition.mjs` (`npm run build:edition`) resolves the profile once and
+ * chains the lib build and this step so both target the same edition.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import fs from 'fs'
 import path from 'path'
@@ -42,7 +46,16 @@ const html = `<!doctype html>
     <noscript>This application requires JavaScript.</noscript>
     <script src="./epicurrents-lib.umd.js"></script>
     <script>
-        window.Epicurrents && window.Epicurrents.createEpicurrentsApp && window.Epicurrents.createEpicurrentsApp()
+        // Report a failed or incomplete lib load instead of leaving a blank page: the container is
+        // empty either way, so a silent guard here is indistinguishable from the app not starting.
+        if (window.Epicurrents && window.Epicurrents.createEpicurrentsApp) {
+            window.Epicurrents.createEpicurrentsApp()
+        } else {
+            document.getElementById('epicurrents').textContent =
+                'Could not start Epicurrents: epicurrents-lib.umd.js did not load, or loaded without ' +
+                'createEpicurrentsApp. Check that it sits next to this page and the console for errors.'
+            console.error('Epicurrents: epicurrents-lib.umd.js did not expose createEpicurrentsApp.')
+        }
     </script>
 </body>
 </html>
