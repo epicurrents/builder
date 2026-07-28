@@ -1,3 +1,13 @@
+/**
+ * Convert built third-party assets into a form the interface can host.
+ *
+ * Currently only the `ohif` scope: the OHIF viewer ships one global CSS bundle whose selectors would
+ * override any Epicurrents defaults with conflicting names, so each rule is re-scoped to the
+ * radiology interface element and to the portals OHIF renders outside it.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
+ */
 import fs from 'fs'
 import { sep } from './util.mjs'
 import { interfaceDir } from './env.mjs'

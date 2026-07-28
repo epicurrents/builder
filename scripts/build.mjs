@@ -1,12 +1,17 @@
 /**
  * Build existing packages from source.
+ *
+ * Scope the run positionally (`epicurrents`, `epicurrents/core`) or to an edition with
+ * `--profile <name>`.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 
 import fs from 'fs'
-import { execSync } from 'child_process'
-import { getScopeComponents, sep } from './util.mjs'
+import { getScopeComponents, run, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
-import { resolveProfile, makePackageFilter } from './profile.mjs'
+import { resolveSelection } from './profile.mjs'
 
 export function buildDependency (pkg, dir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -24,23 +29,11 @@ export function buildDependency (pkg, dir) {
         return
     }
     console.debug(`Building package ${pkg.name}.`)
-    execSync(`cd ${pkgDir} && npm run build`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`Error: ${err}`)
-            return
-        }
-        //console.debug(`Out: ${stdout}`)
-        console.error(`Error: ${stderr}`)
-    })
+    run('npm run build', pkgDir)
     console.debug(`Package ${pkg.name} built.`)
 }
 console.info("Building packages...")
-const scopes = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
-const profile = await resolveProfile()
-const includes = makePackageFilter(profile)
-if (profile) {
-    console.info(`Restricting to profile '${profile.label || profile.name}'.`)
-}
+const { scopes, includes } = await resolveSelection()
 for (const [key, value] of packages) {
     for (const [namespace, pkgName] of getScopeComponents(...scopes)) {
         if ((namespace === key || namespace === 'all') || !namespace.length) {

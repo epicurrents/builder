@@ -1,10 +1,80 @@
 /**
  * Dependency utilities.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import fs from 'fs'
 import path from 'path'
+import { execSync } from 'child_process'
 
 export const sep = path.sep
+/**
+ * Options that take their value as the following argument (`--profile eeg`) rather than inline
+ * (`--profile=eeg`). Both forms are accepted; this set is what lets `parseArgs` consume the value
+ * so it is not mistaken for a scope.
+ */
+const VALUE_OPTIONS = new Set(['profile', 'manifest', 'from', 'to'])
+/**
+ * Split command line arguments into named options and positional scopes.
+ *
+ * Every workspace script takes optional positional scopes (`epicurrents`, `epicurrents/core`) plus
+ * named options (`--profile eeg`). Parsing them by hand is what made `--profile <name>` silently
+ * select nothing: the value is not `--`-prefixed, so a naive filter left it in the scope list where
+ * it matched no package group.
+ * @param {string[]} argv - Arguments to parse (optional, defaults to the current process arguments).
+ * @returns {{ options: Map<string, string|boolean>, scopes: string[] }} - Named options and positional scopes.
+ */
+export function parseArgs (argv = process.argv.slice(2)) {
+    const options = new Map()
+    const scopes = []
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i]
+        if (!arg.length) {
+            continue
+        }
+        if (!arg.startsWith('--')) {
+            scopes.push(arg)
+            continue
+        }
+        const inline = arg.indexOf('=')
+        if (inline !== -1) {
+            options.set(arg.slice(2, inline), arg.slice(inline + 1))
+            continue
+        }
+        const name = arg.slice(2)
+        if (!VALUE_OPTIONS.has(name)) {
+            options.set(name, true)
+            continue
+        }
+        const value = argv[i + 1]
+        if (value === undefined || value.startsWith('--')) {
+            throw new Error(`Option --${name} requires a value (use --${name} <value> or --${name}=<value>).`)
+        }
+        options.set(name, value)
+        // Consume the value so the loop does not read it as a scope.
+        i++
+    }
+    return { options, scopes }
+}
+/**
+ * Run a shell command, throwing an error that names the command when it fails.
+ *
+ * `execSync` takes no callback, so a trailing error handler passed to it is never called; a failing
+ * command throws instead. This wrapper turns that throw into a message that says which command
+ * failed, which the callers then annotate with what they were trying to do.
+ * @param {string} command - Command to run.
+ * @param {string} cwd - Directory to run the command in (optional, defaults to the current directory).
+ * @returns {Buffer} - Output of the command.
+ */
+export function run (command, cwd = undefined) {
+    try {
+        return execSync(command, { stdio: 'inherit', cwd: cwd })
+    } catch (error) {
+        const reason = typeof error.status === 'number' ? `exit code ${error.status}` : error.message
+        throw new Error(`Command failed (${reason}): ${command}`)
+    }
+}
 /**
  * Recursively copy the contents of the folder from `root` to the `dest`.
  * @param {string} root - Root folder of the items to copy.

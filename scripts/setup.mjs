@@ -1,20 +1,22 @@
 /**
- * This script initialiazes the chosen set of packages for development, cloning the latest
- * versions directly from repository.
+ * Clone, install and build the chosen set of packages, fetching the latest versions directly from
+ * their repositories.
+ *
+ * Scope the run positionally (`epicurrents`, `epicurrents/core`) or to an edition with
+ * `--profile <name>`; `--manifest <file>` checks out the exact commits a release manifest pins.
+ * Without a profile every package published from a public source is set up; add `--include-private`
+ * for a maintainer's full working tree.
+ *
  * Original method from https://stackoverflow.com/a/20643568.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 
 import fs from 'fs'
-import { execSync } from 'child_process'
-import { deleteFolderRecursive, sep } from './util.mjs'
+import { deleteFolderRecursive, run, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
-import { resolveProfile, makePackageFilter } from './profile.mjs'
-
-// Do not run setup if the epicurrents module namespace exists.
-//if (fs.existsSync(epicRoot) && fs.lstatSync(epicRoot).isDirectory()) {
-//    console.error(`Module root ${epicRoot} already exists. You must delete module root to run setup.`)
-//    process.exit(1)
-//}
+import { resolveSelection } from './profile.mjs'
 
 export function initializeDependency (pkg, repository, parent, ref) {
     if (!fs.existsSync(parent)) {
@@ -25,43 +27,27 @@ export function initializeDependency (pkg, repository, parent, ref) {
     const pkgRepo = pkg.rename ? `${repository} ${pkg.name}` : `${repository}/${pkg.name}`
     if (fs.existsSync(pkgDir) && fs.lstatSync(pkgDir).isDirectory()) {
         console.info(`Package ${pkg.name} already exists, fetching from remote.`)
-        execSync(`cd ${pkgDir} && git fetch --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-            if (err) {
-                console.error(`Error fetching from remote: ${err}`)
-                return
-            }
-            console.error(`Error fetching from remote: ${stderr}`)
-        })
+        run('git fetch --all', pkgDir)
     } else {
         console.info(`Cloning package ${pkg.name}.`)
-        execSync(`cd ${parent} && git clone ${pkgRepo}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-            if (err) {
-                console.error(`Error cloning repository: ${err}`)
-                return
-            }
-            console.error(`Error cloning repository: ${stderr}`)
-        })
+        try {
+            run(`git clone ${pkgRepo}`, parent)
+        } catch (error) {
+            throw new Error(
+                `Could not clone ${pkg.name} from ${repository}. If this repository is not public, ` +
+                `mark the package \`public: false\` in scripts/env.mjs and select it from a profile in ` +
+                `profiles/local/ instead of setting up every package.\n${error.message}`
+            )
+        }
     }
     // Check out the pinned commit (manifest reproduction) or the package's branch.
     // A pinned commit is checked out detached and NOT pulled; a branch is pulled.
     const target = ref || pkg.branch || 'main'
     console.info(`Checking out ${ref ? `commit ${ref}` : `branch ${target}`} for package ${pkg.name}.`)
-    execSync(`cd ${pkgDir} && git checkout ${target}`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`Error checking out: ${err}`)
-            return
-        }
-        console.error(`Error checking out: ${stderr}`)
-    })
+    run(`git checkout ${target}`, pkgDir)
     if (!ref) {
         console.info(`Pulling updates from remote.`)
-        execSync(`cd ${pkgDir} && git pull --all`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-            if (err) {
-                console.error(`Error pulling from remote: ${err}`)
-                return
-            }
-            console.error(`Error pulling from remote: ${stderr}`)
-        })
+        run('git pull --all', pkgDir)
     }
     // Stop here if it is an external package.
     if (pkg.external) {
@@ -69,13 +55,7 @@ export function initializeDependency (pkg, repository, parent, ref) {
         return
     }
     console.info(`Installing package ${pkg.name}.`)
-    execSync(`cd ${pkgDir} && npm i`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`Error installing package: ${err}`)
-            return
-        }
-        console.error(`Error installing package: ${stderr}`)
-    })
+    run('npm i', pkgDir)
     // Remove local epicurrents packages, event bus and log before building to use the same version in all packages.
     if (!pkg.external) {
         const localCore = [pkgDir, 'node_modules', '@epicurrents'].join(sep)
@@ -103,50 +83,33 @@ export function initializeDependency (pkg, repository, parent, ref) {
     if (pkg.prebuild?.length) {
         console.info('Running prebuild steps.')
         for (const step of pkg.prebuild) {
-            execSync(step, { stdio: 'inherit' }, (err, stdout, stderr) => {
-                if (err) {
-                    console.error(`Error in prebuild: ${err}`)
-                    return
-                }
-                console.error(`Error in prebuild: ${stderr}`)
-            })
+            run(step)
         }
         console.info('Prebuild steps complete.')
     }
     console.info(`Building package ${pkg.name}.`)
-    execSync(`cd ${pkgDir} && npm run build`, { stdio: 'inherit' }, (err, stdout, stderr) => {
-        if (err) {
-            console.error(`Error building package: ${err}`)
-            return
-        }
-        console.error(`Error building package: ${stderr}`)
-    })
+    run('npm run build', pkgDir)
     console.info(`Package ${pkg.name} initialized.`)
 }
 
 console.info("Cloning and initializing missing packages...")
-const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
-const profile = await resolveProfile()
-const includes = makePackageFilter(profile)
-if (profile) {
-    console.info(`Restricting to profile '${profile.label || profile.name}'.`)
-}
+const { scopes, options, includes } = await resolveSelection()
 // Optional reproducibility manifest: pin every listed package to its exact commit.
-const manifestIndex = process.argv.indexOf('--manifest')
-const manifestPath = manifestIndex !== -1 ? process.argv[manifestIndex + 1] : null
+const manifestPath = options.get('manifest')
 let pins = null
 if (manifestPath) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
     pins = new Map(manifest.packages.map(p => [p.name, p.commit]))
     console.info(`Reproducing from manifest '${manifestPath}' (edition ${manifest.edition}, ${pins.size} pinned packages).`)
 }
+let initialized = 0
 for (const [key, value] of packages) {
     if (!Object.hasOwn(value, 'repository')) {
         console.error(`No repository found for ${key}.`)
         continue
     }
-    if ((scope.map(s => s.split('/')[0]).includes(key) || scope.includes('all') || !scope.length)) {
-        const scopeLimit = scope.map(s => s.split('/')).find(s => s[0] === key)
+    if ((scopes.map(s => s.split('/')[0]).includes(key) || scopes.includes('all') || !scopes.length)) {
+        const scopeLimit = scopes.map(s => s.split('/')).find(s => s[0] === key)
         if (Object.hasOwn(value, 'packages')) {
             const { packages, repository } = value
             packages.forEach(pkg => {
@@ -157,6 +120,7 @@ for (const [key, value] of packages) {
                     return
                 }
                 initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name))
+                initialized++
             })
         } else if (Object.hasOwn(value, 'name')) {
             if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== value.name) {
@@ -166,8 +130,21 @@ for (const [key, value] of packages) {
                 continue
             }
             initializeDependency(value, value.repository, rootDir, pins?.get(value.name))
+            initialized++
         }
-        execSync('npm install --if-present', { stdio: 'inherit' })
     }
 }
+if (!initialized) {
+    // A scope that matches no package is a mistake, not an empty success: it used to exit 0 having
+    // done nothing, which made a mis-parsed `--profile` value look like a completed setup.
+    throw new Error(
+        scopes.length
+            ? `No packages matched the given scope (${scopes.join(', ')}). Scopes are a group ` +
+              `(${[...packages.keys()].join(', ')}) or <group>/<package>.`
+            : 'No packages matched. Check the profile and the package registry in scripts/env.mjs.'
+    )
+}
+// Link the freshly cloned packages into the workspace once, after they all exist.
+console.info('Installing workspace dependencies.')
+run('npm install', rootDir)
 console.info("Done initializing packages.")
