@@ -4,12 +4,20 @@
  * For every package an edition uses (the profile's packages plus the always-
  * included core / util / interface), records the repository and the exact commit
  * currently checked out, plus the builder's own commit. The commit is the pin: a
- * later `npm run setup -- --manifest <file>` checks out these exact SHAs, so a
- * release rebuilds byte-for-byte without depending on any npm version bump.
+ * later `npm run setup -- --manifest <file>` checks out these exact SHAs, so the
+ * edition rebuilds from identical sources without depending on any npm version bump.
+ *
+ * Sources, not the whole dependency graph: setup installs each package with `npm i`
+ * against its own lockfile, so third-party dependency resolution is pinned only as
+ * far as those lockfiles pin it. Identical first-party code, not a byte-identical
+ * bundle.
  *
  * Run after setup + build: `EPI_PROFILE=<name> node scripts/manifest.mjs`. The
  * edition version comes from `EPI_VERSION` (the release tag sets it); it is null
  * for a plain development manifest. Output: `dist/<profile>/manifest.json`.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import fs from 'fs'
 import path from 'path'
@@ -31,6 +39,25 @@ function git (dir, args) {
     }
 }
 
+/**
+ * Rewrite a git remote into its public HTTPS form.
+ *
+ * A manifest is published for other people to rebuild from, but the remote is read from whatever
+ * checkout happened to produce the build — typically SSH on a maintainer's machine, which nobody
+ * else can clone. The commit is the pin either way; this only makes the URL usable.
+ * @param {string|null} url - Remote URL as git reports it.
+ */
+function publicRemote (url) {
+    if (!url) {
+        return url
+    }
+    const ssh = url.match(/^(?:ssh:\/\/)?git@([^:/]+)[:/](.+?)(?:\.git)?$/)
+    if (ssh) {
+        return `https://${ssh[1]}/${ssh[2]}`
+    }
+    return url.replace(/\.git$/, '')
+}
+
 /** Resolve the repo + pinned commit for a cloned package, or null if unavailable. */
 function pin (dir, pkg) {
     if (!fs.existsSync(dir)) {
@@ -44,7 +71,7 @@ function pin (dir, pkg) {
     }
     return {
         name: pkg.name,
-        repository: git(dir, 'remote get-url origin'),
+        repository: publicRemote(git(dir, 'remote get-url origin')),
         branch: git(dir, 'rev-parse --abbrev-ref HEAD'),
         commit,
     }
@@ -79,7 +106,7 @@ const manifest = {
     version: process.env.EPI_VERSION || null,
     generated: new Date().toISOString(),
     builder: {
-        repository: git(rootDir, 'remote get-url origin'),
+        repository: publicRemote(git(rootDir, 'remote get-url origin')),
         commit: git(rootDir, 'rev-parse HEAD'),
     },
     packages: pins,
