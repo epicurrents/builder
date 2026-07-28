@@ -1,17 +1,26 @@
 {
-    "name": "epicurrents-app",
+    "name": "epicurrents-builder",
     "version": "0.1.0",
-    "description": "Epicurrents application",
-    "main": "index.js",
+    "description": "Builder that assembles the Epicurrents packages into per-edition releases",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/epicurrents/builder.git"
+    },
+    "homepage": "https://github.com/epicurrents/builder#readme",
+    "bugs": {
+        "url": "https://github.com/epicurrents/builder/issues"
+    },
     "scripts": {
         "build:app": "cd interface && npm run build:app",
         "build:asset": "node scripts/build.mjs",
         "build:assets": "node scripts/build.mjs util interface epicurrents",
         "build:tsc-all": "npm run build -w scoped-event-log -w scoped-event-bus -w asymmetric-io-mutex && npm run build:tsc --workspaces --if-present",
         "build:dev": "npm run build:assets && npm run build:ohif:dev && npm run copy:all && cd interface && npm run build:app",
-        "build:edition": "npm run build:edition:lib && node scripts/standalone.mjs",
+        "build:edition": "node scripts/edition.mjs",
         "build:edition:lib": "vite build --config vite.config.lib.ts",
-        "build:release": "npm run build:edition && node scripts/manifest.mjs",
+        "build:release": "node scripts/edition.mjs --release",
+        "check:deps": "node scripts/depcheck.mjs",
         "build:lib": "cd interface && npm run build",
         "build:ohif:dev": "cd ohif && cross-env PUBLIC_URL=/ohif/ yarn run build && cd .. && npm run copy:ohif && node scripts/convert.mjs ohif",
         "clean": "node scripts/clean.mjs",
@@ -29,7 +38,14 @@
         "test:tab": "cd epicurrents/tab-module && vitest run --coverage",
         "typecheck": "node scripts/typecheck.mjs"
     },
-    "keywords": [],
+    "keywords": [
+        "epicurrents",
+        "biosignal",
+        "eeg",
+        "emg",
+        "viewer",
+        "build"
+    ],
     "author": "Sampsa Lohi",
     "license": "Apache-2.0",
     "engines": {
@@ -44,6 +60,9 @@
         "@vitest/coverage-v8": "^4.1.5",
         "cross-env": "^7.0.3",
         "jsdom": "^29.1.1",
+        "typescript": "^5.7.0",
+        "vite": "^7.3.1",
+        "vite-plugin-singlefile": "^2.0.1",
         "vitest": "^4.1.5"
     }
 }
