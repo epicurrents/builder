@@ -11,4 +11,4 @@ Drop a `<name>.mjs` here with the same shape as a public profile (see [`../READM
 npm run setup -- --profile <name>
 ```
 
-The loader resolves `profiles/<name>.mjs` first, then `profiles/local/<name>.mjs`, so a local profile can also shadow a public one of the same name.
+The loader resolves `profiles/<name>.mjs` first, then `profiles/local/<name>.mjs` — so a public profile of the same name wins, and a local profile cannot shadow one. Give local profiles their own names.

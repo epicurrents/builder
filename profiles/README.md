@@ -26,9 +26,11 @@ export default {
 ```
 
 - `packages` names entries from `scripts/env.mjs`. `core`, the `util` group and the `interface` group are always included, so a profile lists only the modules, readers and services its edition adds.
-- `setup` describes the interface bundle configuration. It becomes active once config-driven module registration lands (see the platform ROADMAP); it is defined now so the profile format is stable.
+- `setup` is the interface bundle configuration. The lib build injects it as `__EPI_SETUP__`, and its `activeModules` decide which registrars in `setup/` run — and which survive bundle trimming, so an edition contains only the modules it names.
+
+**List `activeModules` explicitly.** An empty list means "every registrar in `setup/modules/`". Some registrars compose non-public packages, and rollup has to resolve a static import before it can tree-shake what the import provides, so the untrimmed build only works in a tree that has every package installed. A public edition that names its modules builds anywhere.
 
 ## Public vs. local profiles
 
-- **Public profiles** live directly in `profiles/` and are committed. They may reference only packages that are published — a public profile that names a package marked `public: false` in `env.mjs` fails to load, which is what keeps public editions reproducible from public sources.
+- **Public profiles** live directly in `profiles/` and are committed. They may reference only packages that are published — a public profile that names a package marked `public: false` in `env.mjs` fails to load, which is what keeps public editions reproducible from public sources. That guarantee is only as good as the `public` flags themselves, so keep them in step with the repositories' actual visibility.
 - **Local profiles** live in the gitignored [`profiles/local/`](local/) subfolder. Use them for editions that pull non-public packages (or any edition you do not want to publish). The loader checks `profiles/<name>.mjs` first, then `profiles/local/<name>.mjs`.

@@ -1,26 +1,10 @@
 # Scripts
 
-This folder contains utilities for setting up and managing a local development environment with the latest versions of Epicurrents packages from their GitHub repositories.
+The builder's Node.js tooling: it clones the `@epicurrents/*` packages from their repositories, builds them in dependency order, and assembles a chosen edition. The user-facing command reference is in the [root README](../README.md); this file covers per-script detail and the configuration they share.
 
-## Purpose
+## Configuration — `env.mjs`
 
-The scripts in this folder enable you to:
-
-- **Setup** (`setup.mjs`): Clone packages from GitHub repositories into your local workspace
-- **Install** (`install.mjs`): Install NPM dependencies for all packages
-- **Clean** (`clean.mjs`): Remove duplicate dependencies to ensure version consistency
-- **Build** (`build.mjs`): Build all packages from source
-- **Update** (`update.mjs`): Pull the latest changes from GitHub for existing packages
-
-Additionally:
-- **Copy** (`copy.mjs`): Copy built assets to the interface public directory
-- **Convert** (`convert.mjs`): Convert assets for production use
-
-## Configuration
-
-### The `packages` Map
-
-The packages to set up are defined in [env.mjs](env.mjs) as a `Map` structure. Each entry represents a group of related packages:
+`env.mjs` holds the package registry and the paths everything else derives from. The registry is a `Map` whose key is both a logical group and the directory that group is cloned into:
 
 ```javascript
 export const packages = new Map([
@@ -34,115 +18,70 @@ export const packages = new Map([
     }],
     ['epicurrents', {
         packages: [
-            { name: 'core' },
-            { name: 'doc-module' },
-            { name: 'edf-reader', branch: 'encoder' },
-            // ... more packages
+            { name: 'core' },                    // must be first — everything depends on it
+            { name: 'eeg-module' },
+            { name: 'edf-reader' },
+            // ...
         ],
         repository: 'https://github.com/epicurrents',
     }],
-    // ... more groups
 ])
 ```
 
-### Package Configuration Options
+A group either carries a `packages` array (each entry a package descriptor) or is a single package itself. `repository` may be set per group and overridden per package.
 
-Each package entry can have the following properties:
+### Package descriptor fields
 
-- **`name`** (required): Name of the package/folder
-- **`branch`**: Git branch to check out (defaults to 'main')
-- **`repository`**: Custom repository URL (overrides the group default)
-- **`prebuild`**: Array of commands to run before building the package
-- **`rename`**: Boolean flag to rename the cloned folder to match the `name` property
-- **`external`**: Boolean flag marking packages that require manual installation/building
+| Field | Type | Meaning |
+|---|---|---|
+| `name` | string (required) | Folder / package name to clone. |
+| `branch` | string | Git branch to check out. Defaults to `main`. |
+| `repository` | string | Override the group's base repository URL for this package. |
+| `prebuild` | string[] | Commands run inside the package folder before building it. |
+| `rename` | boolean | Rename the cloned folder to the map key, for when the repository name differs. |
+| `external` | boolean | Not part of the workspace — cloned into the repository root, with install and build left to you (OHIF, which uses yarn). |
+| `public` | boolean | Whether the package is published from a public source. Defaults to true. |
 
-### Customizing the Package List
+**The `public` flag is load-bearing.** A public profile may not name a `public: false` package, and the default setup skips them so a fresh clone builds without access to any private repository. Keep it in step with the repositories' actual visibility — the public/local profile split and the release workflow's "only public editions" guarantee both rest on it.
 
-To adjust which packages are set up:
+Ordering matters. `util` is built before `epicurrents`, and within `epicurrents`, `core` must come first.
 
-1. Open [env.mjs](env.mjs)
-2. Locate the `packages` Map
-3. Add, remove, or modify package entries as needed
-4. For packages on a specific branch, add the `branch` property
-5. For packages from a different repository, add the full `repository` URL
+`env.mjs` also exports `rootDir`, `interfaceDir` and `workerPaths` (the compiled `umd/` worker directories `copy.mjs` gathers into the interface).
 
-**Example**: Adding a new package to the epicurrents group:
+## Arguments
 
-```javascript
-['epicurrents', {
-    packages: [
-        { name: 'core' },
-        { name: 'my-new-module' },  // Add your package here
-        { name: 'special-reader', branch: 'develop' },  // On a specific branch
-    ],
-    repository: 'https://github.com/epicurrents',
-}],
-```
+Every workspace script takes the same two kinds of argument, parsed by `parseArgs` in `util.mjs`:
 
-## Running the Scripts
+- **Positional scopes** — a group (`epicurrents`) or a single package (`epicurrents/core`).
+- **Named options** — `--profile <name>` or `--profile=<name>`, `--manifest <file>`, `--include-private`.
 
-All scripts are executed via npm commands defined in the root [package.json](../package.json):
+Both forms of an option are accepted. Options that take a value consume the next argument, so the value is never mistaken for a scope — parsing this by hand is what once made `--profile <name>` select nothing and exit successfully.
 
-### Full Setup Workflow
+`profile.mjs`'s `resolveSelection()` turns those arguments into the active profile, the scopes and a package filter, so every script selects packages the same way.
 
-For a complete setup of a fresh development environment, run these commands in order:
+## The scripts
 
-```bash
-npm run setup    # Clone packages from GitHub
-npm run instl    # Install dependencies
-npm run clean    # Clean duplicate dependencies
-npm run build:assets  # Build all packages
-```
+| Script | What it does |
+|---|---|
+| `setup.mjs` | Clone (or fetch) each selected package, check out its branch or a manifest's pinned commit, install it, strip duplicated shared packages, build it, then link everything into the workspace. |
+| `install.mjs` | `npm i` in each already-cloned package. |
+| `clean.mjs` | Remove duplicated shared packages nested inside each package's `node_modules`. |
+| `build.mjs` | Build already-cloned packages from source. |
+| `update.mjs` | `git pull` each package and re-check out its pinned branch. |
+| `edition.mjs` | Build an edition end to end: the lib bundle, the standalone `index.html`, and with `--release` the manifest. Resolves the profile once and passes it to each step. |
+| `standalone.mjs` | Write the standalone `index.html` into an edition's lib output. Normally invoked by `edition.mjs`. |
+| `manifest.mjs` | Record every package's exact commit for an edition into `dist/<edition>/manifest.json`. |
+| `profile.mjs` | Load and validate a profile, and resolve arguments into a package selection. Enforces the public/non-public rule. |
+| `typecheck.mjs` | `tsc --noEmit` over every present `util/*` and `epicurrents/*` package, with a ✓/✗ summary. |
+| `copy.mjs` | Copy compiled worker bundles and OHIF assets into the interface. Also does explicit `--from`/`--to` copies for `prebuild` steps. |
+| `convert.mjs` | Convert assets for production use. |
+| `env.mjs` | The package registry and shared paths. |
+| `util.mjs` | Filesystem helpers, argument parsing, and the `run()` command wrapper. |
 
-### Individual Commands
+`run()` exists because `execSync` takes no callback: a trailing error handler passed to it is never called, and a failing command throws instead. `run()` turns that throw into a message naming the command, which callers annotate with what they were attempting.
 
-#### Setup (Clone Repositories)
-```bash
-npm run setup [scope]
-```
-Clones packages from their Git repositories. Optionally specify a scope (e.g., `util`, `epicurrents`, `interface`) to set up only that group.
+## Notes
 
-#### Install Dependencies
-```bash
-npm run instl [scope]
-```
-Installs NPM packages for all dependencies. Optionally specify a scope to install only that group's packages.
-
-#### Clean Dependencies
-```bash
-npm run clean [scope]
-```
-Removes duplicate `@epicurrents` packages and event bus/log packages from submodules to ensure version consistency across the application. This should be run after any NPM install operations.
-
-#### Build from Source
-```bash
-npm run build:assets [scope]
-```
-Builds all packages from source. Optionally specify a scope to build only that group's packages.
-
-#### Update from Repository
-```bash
-npm run update [scope]
-```
-Pulls the latest changes from GitHub for existing packages. Optionally specify a scope to update only that group.
-
-## Important Notes
-
-- **Order matters**: For initial setup, always run in the order: `setup` → `instl` → `clean` → `build:assets`
-- **Cleaning is critical**: Run `npm run clean` after installing new dependencies to prevent version conflicts
-- **Utilities first**: The `util` packages must be set up before `epicurrents` packages
-- **Core first**: Within the `epicurrents` group, the `core` package must be built before other modules
-- **External packages**: Packages marked with `external: true` (like OHIF) require manual setup
-
-## File Descriptions
-
-- **`env.mjs`**: The `packages` configuration Map plus environment paths (`rootDir`, `interfaceDir`, `workerPaths`)
-- **`util.mjs`**: Shared filesystem helpers (recursive copy/delete, scope parsing)
-- **`setup.mjs`**: Clones packages from Git repositories
-- **`install.mjs`**: Installs NPM dependencies
-- **`clean.mjs`**: Removes duplicate dependencies
-- **`build.mjs`**: Builds packages from source
-- **`update.mjs`**: Updates packages from their Git remotes
-- **`copy.mjs`**: Copies built assets to the interface
-- **`convert.mjs`**: Converts assets for production
-- **`index.mjs`**: Exports utility functions for programmatic use
+- **Cleaning matters.** Each package installs its own copy of `@epicurrents/core` and the shared utilities. Left in place, the worker bundle and the main thread can be built against different versions of the same shared code — which type-checks and then corrupts data at runtime. See [Why cleaning matters](../README.md#why-cleaning-matters).
+- **Setup cleans as it goes.** It performs the same deletions as `clean.mjs` per package, between installing and building. Run `clean` separately after installing or removing packages inside a checkout later.
+- If you change `workerPaths`, make sure the referenced `umd/` folders exist in the built packages so the copy step succeeds.

@@ -12,6 +12,9 @@
  * `setup` is injected as `__EPI_SETUP__` and drives which registrars run (see
  * setup/index.ts). Output goes to `dist/<profile>/`; a build with no profile emits
  * `dist/default/` and registers every available modality.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 import fs from 'fs'
 import path from 'path'
@@ -91,6 +94,11 @@ export default defineConfig(async () => {
         worker: {
             format: 'iife',
         },
+        // viteSingleFile is here for its side effect on code splitting, not for HTML inlining: it
+        // disables chunking, so the ES build emits one `epicurrents-lib.mjs` instead of scattering
+        // the interface's dynamic imports across hashed sibling chunks. The UMD build is
+        // single-file by format, so only the ES output depends on this. Removing it silently
+        // fragments the embeddable lib.
         plugins: [
             trimRegistry(activeModules),
             viteSingleFile(),
