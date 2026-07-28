@@ -1,20 +1,23 @@
 /**
  * Full edition.
  *
- * Every public module, reader and service — the kitchen-sink demo build. Matches
- * the all-in developer default (no `--profile`) but is pinned and shipped as a
- * release. Excludes the non-public Nicolet reader and the external OHIF viewer;
- * add `'ohif'` here if a radiology-capable full build is wanted.
+ * Every modality the builder can register, from public packages only — the kitchen-sink demo
+ * build. `activeModules` is listed explicitly rather than left empty (which would mean "every
+ * registrar in setup/modules/") because some registrars compose non-public packages; naming the
+ * public ones keeps this profile buildable by anyone.
+ *
+ * Modalities with no registrar yet (ncs, tab) are left out: their packages would be cloned and
+ * built without anything registering them. Add the package and the registrar together.
+ * @package    epicurrents/builder
+ * @copyright  2026 Sampsa Lohi
+ * @license    Apache-2.0
  */
 export default {
     label: 'Full',
     packages: [
-        'acc-module',
         'doc-module',
         'eeg-module',
         'emg-module',
-        'ncs-module',
-        'csv-reader',
         'dicom-reader',
         'edf-reader',
         'htm-reader',
@@ -23,6 +26,6 @@ export default {
         'pyodide-service',
     ],
     setup: {
-        activeModules: [],
+        activeModules: ['eeg', 'emg', 'htm', 'pdf'],
     },
 }

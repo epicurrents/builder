@@ -1,5 +1,8 @@
 /**
  * Environment-specific variables.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 
 /**
@@ -41,8 +44,11 @@
  * The `external` parameter is used to indicate that the package is not part of the monorepo and should be installed
  * in the root directory instead of the `interface` directory.
  * The `public` parameter (default true) marks whether the package is published from a public source. A public build
- * profile (one in `profiles/`) may not include a package with `public: false`; such packages are available only to
- * local editions in `profiles/local/`. See `scripts/profile.mjs`.
+ * profile (one in `profiles/`) may not include a package with `public: false`, and the all-in default (no profile)
+ * skips them so a fresh clone builds without access to any private repository; such packages are available only to
+ * local editions in `profiles/local/`, or via `--include-private` for a maintainer's full working tree. Keep this
+ * flag in step with the repositories' actual visibility — it is what the public/local profile split rests on.
+ * See `scripts/profile.mjs`.
  *
  * The `packages` parameter is used to define multiple packages under the same key. This is useful for grouping related
  * packages together, such as all @epicurrents modules.
@@ -63,19 +69,18 @@ export const packages = new Map([
             // Core must be the first @epicurrents module.
             { name: 'core' },
             // Resource modules.
-            { name: 'acc-module' },
+            { name: 'acc-module', public: false },
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
             { name: 'ncs-module' },
             { name: 'tab-module' },
             // Source type readers.
-            { name: 'api-reader' },
-            { name: 'csv-reader' },
+            { name: 'api-reader', public: false },
+            { name: 'csv-reader', public: false },
             { name: 'dicom-reader' },
             { name: 'edf-reader' },
             { name: 'htm-reader' },
-            // Not published yet — only local (profiles/local/) editions may include it.
             { name: 'nic-reader', public: false },
             {
                 name: 'pdf-reader',
@@ -85,7 +90,6 @@ export const packages = new Map([
                     //'cp -r node_modules/pdfjs-dist node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist', // Unix
                 ],
             },
-            //{ name: 'synergy-reader' },
             { name: 'wav-reader' },
             // Services.
             { name: 'onnx-service' },
