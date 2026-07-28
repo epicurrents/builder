@@ -1,12 +1,17 @@
 /**
  * Install NPM packages for all packages. Installed packages should be cleaned of
  * conflicting @epicurrents namespace packages afterwards.
+ *
+ * Scope the run positionally (`epicurrents`) or to an edition with `--profile <name>`.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 
 import fs from 'fs'
-import { execSync } from 'child_process'
-import { sep } from './util.mjs'
+import { run, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
+import { resolveSelection } from './profile.mjs'
 
 export function installDependency (pkg, dir = rootDir) {
     const pkgDir = [dir, pkg.name].join(sep)
@@ -19,20 +24,26 @@ export function installDependency (pkg, dir = rootDir) {
         return
     }
     console.debug(`Installing package ${pkgDir}.`)
-    execSync(`cd ${pkgDir} && npm i`, { stdio: 'inherit' })
+    run('npm i', pkgDir)
     console.debug(`Package ${pkg.name} installed.`)
 }
 
 console.info("Installing packages...")
-const scope = process.argv.slice(2).filter(s => s.length && !s.startsWith('--'))
+const { scopes, includes } = await resolveSelection()
 for (const [key, value] of packages) {
-    if ((scope.includes(key) || scope.includes('all') || !scope.length)) {
+    if ((scopes.includes(key) || scopes.includes('all') || !scopes.length)) {
         if (Object.hasOwn(value, 'packages')) {
             const { packages } = value
             packages.forEach(pkg => {
+                if (!includes(key, pkg.name)) {
+                    return
+                }
                 installDependency(pkg, `${[rootDir, key].join(sep)}`)
             })
         } else if (Object.hasOwn(value, 'name')) {
+            if (!includes(key, value.name)) {
+                continue
+            }
             installDependency(value, rootDir)
         }
     }

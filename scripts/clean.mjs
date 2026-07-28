@@ -5,11 +5,17 @@
  *
  * Packages must be cleaned every time new NPM packages are installed or removed in any of
  * the submodules.
+ *
+ * Scope the run positionally (`epicurrents`) or to an edition with `--profile <name>`.
+ * @package    epicurrents/builder
+ * @copyright  2025 Sampsa Lohi
+ * @license    Apache-2.0
  */
 
 import fs from 'fs'
 import { deleteFolderRecursive, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
+import { resolveSelection } from './profile.mjs'
 
 export function cleanDependency (pkg, dir = rootDir) {
     // Delete separate @epicurrents packages to guarantee version match across packages.
@@ -26,8 +32,9 @@ export function cleanDependency (pkg, dir = rootDir) {
 }
 
 console.info("Cleaning dependency modules...")
+const { scopes, includes } = await resolveSelection()
+const limit = scopes[0]
 for (const [key, value] of packages) {
-    const limit = process.argv[2]
     const validScopes = ['epicurrents', 'interface']
     if (!validScopes.includes(key) || (limit && limit !== key)) {
         // Only epicurrents modules have packages to clean.
@@ -40,6 +47,9 @@ for (const [key, value] of packages) {
     }
     if (value.packages) {
         value.packages.forEach(pkg => {
+            if (!includes(key, pkg.name)) {
+                return
+            }
             cleanDependency(pkg, destDir)
         })
     } else {
