@@ -29,7 +29,7 @@ export function buildDependency (pkg, dir) {
         return
     }
     console.debug(`Building package ${pkg.name}.`)
-    run('npm run build', pkgDir)
+    run(pkg.build || 'npm run build', pkgDir)
     console.debug(`Package ${pkg.name} built.`)
 }
 console.info("Building packages...")

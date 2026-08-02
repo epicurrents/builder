@@ -88,7 +88,7 @@ export function initializeDependency (pkg, repository, parent, ref) {
         console.info('Prebuild steps complete.')
     }
     console.info(`Building package ${pkg.name}.`)
-    run('npm run build', pkgDir)
+    run(pkg.build || 'npm run build', pkgDir)
     console.info(`Package ${pkg.name} initialized.`)
 }
 

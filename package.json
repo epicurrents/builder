@@ -21,7 +21,6 @@
         "build:edition:lib": "vite build --config vite.config.lib.ts",
         "build:release": "node scripts/edition.mjs --release",
         "check:deps": "node scripts/depcheck.mjs",
-        "build:lib": "cd interface && npm run build",
         "build:ohif:dev": "cd ohif && cross-env PUBLIC_URL=/ohif/ yarn run build && cd .. && npm run copy:ohif && node scripts/convert.mjs ohif",
         "clean": "node scripts/clean.mjs",
         "copy:all": "node scripts/copy.mjs",

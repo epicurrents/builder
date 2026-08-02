@@ -56,6 +56,24 @@ The work:
 Type-only imports erase, so none of this adds a byte to any bundle. It is also the prerequisite for the plugin API below.
 
 
+Consolidate build outputs — `dist` in the interface, lib in the builder
+-----------------------------------------------------------------------
+
+🟢 **Priority: green — largely done.** The lib is consolidated; the app is deliberately kept in the interface.
+
+The interface's three artifact roles were spread across four Vite configs:
+
+- **`dist/` — build-time consumable.** The per-module package (deps externalised, un-minified, multi-entry) a bundler composes from — the builder's input and the only form a downstream app imports.
+- **`build/lib/` — runtime consumable.** A single inlined, minified UMD for a `<script>` drop-in.
+- **`build/app/` — standalone.** The deployable web app (index.html + service worker).
+
+**Done (the lib).** The interface's default `build` now produces `dist/` (`vite.config.dist.ts`); `vite.config.lib.ts` and the interface/builder `build:lib` scripts are gone. The builder produces the runtime-consumable lib via `build:edition` (per profile, from the interface's `dist/`), and the platform's `build:viewer` consumes the `full` edition (`dist/full/`) into `viewer-dist/` instead of building the interface lib. The SPA loads the edition's `.umd.js`; the per-project public viewers keep `.umd.cjs` from the platform's own `build:base`. The per-package `build` override is gone (the interface defaults to `dist`); the `pkg.build || …` fallback in `setup.mjs`/`build.mjs` stays as a general escape hatch.
+
+**Kept in the interface (by decision).** `build:app` / `vite.config.app.ts` — the standalone PWA, wired into the builder's `build:dev` (with OHIF). Moving it would need a dev-edition path in the builder; not worth it now.
+
+**Remaining.** The platform's *per-project* viewers (`viewer-dist/<project>/`, e.g. `prehos`) are still built by the platform's own `build:base` overlay, not by builder editions. Folding those into editions — so every viewer artifact comes from the builder — is the last step, if wanted. A cosmetic follow-up: the flat `viewer-dist/` copy now also carries the edition's `index.html`/`.mjs` (harmless extras the SPA ignores); the copy could exclude them.
+
+
 Plugin API via the runtime global
 ---------------------------------
 

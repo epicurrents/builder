@@ -21,6 +21,7 @@
  *      packages: [
  *          { name<sring>: name of the folder to install the package in,
  *            branch<sring>?: name of the git branch to check out,
+ *            build<sring>?: build command override (defaults to 'npm run build'),
  *            prebuild<sring[]>: list of commands to run before building the package,
  *            rename<boolean>?: rename the install folder to match the `name` parameter,
  *            repository<sring>: URL to a git repository,
