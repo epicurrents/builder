@@ -5,7 +5,8 @@
  * Scope the run positionally (`epicurrents`, `epicurrents/core`) or to an edition with
  * `--profile <name>`; `--manifest <file>` checks out the exact commits a release manifest pins.
  * Without a profile every package published from a public source is set up; add `--include-private`
- * for a maintainer's full working tree.
+ * for a maintainer's full working tree. `external` packages (e.g. the OHIF viewer) are skipped unless
+ * `--include-external` is passed, which clones them only — their install and build stay manual.
  *
  * Original method from https://stackoverflow.com/a/20643568.
  * @package    epicurrents/builder
@@ -18,7 +19,14 @@ import { deleteFolderRecursive, run, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
 import { resolveSelection } from './profile.mjs'
 
-export function initializeDependency (pkg, repository, parent, ref) {
+export function initializeDependency (pkg, repository, parent, ref, includeExternal = false) {
+    // External packages (heavy out-of-monorepo repos, e.g. the OHIF viewer) are skipped by default —
+    // they are large and only some editions need them. Pass `--include-external` to clone them. Checked
+    // before cloning, not after, so the default setup never pulls them.
+    if (pkg.external && !includeExternal) {
+        console.info(`Package ${pkg.name} is marked external, skipping (pass --include-external to clone it).`)
+        return
+    }
     if (!fs.existsSync(parent)) {
         console.info(`Creating missing parent directory ${parent}.`)
         fs.mkdirSync(parent, { recursive: true })
@@ -49,9 +57,10 @@ export function initializeDependency (pkg, repository, parent, ref) {
         console.info(`Pulling updates from remote.`)
         run('git pull --all', pkgDir)
     }
-    // Stop here if it is an external package.
+    // External packages are cloned (when opted in above) but never installed or built by our toolchain —
+    // they have their own (e.g. OHIF uses yarn with a bespoke procedure). Install and build them manually.
     if (pkg.external) {
-        console.info(`Package ${pkg.name} is external, manual installation required.`)
+        console.info(`Package ${pkg.name} is external — cloned only; install and build it manually.`)
         return
     }
     console.info(`Installing package ${pkg.name}.`)
@@ -94,6 +103,8 @@ export function initializeDependency (pkg, repository, parent, ref) {
 
 console.info("Cloning and initializing missing packages...")
 const { scopes, options, includes } = await resolveSelection()
+// External packages (marked `external` in env.mjs) are cloned only when this flag is passed.
+const includeExternal = options.get('include-external') === true
 // Optional reproducibility manifest: pin every listed package to its exact commit.
 const manifestPath = options.get('manifest')
 let pins = null
@@ -119,7 +130,7 @@ for (const [key, value] of packages) {
                 if (!includes(key, pkg.name)) {
                     return
                 }
-                initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name))
+                initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name), includeExternal)
                 initialized++
             })
         } else if (Object.hasOwn(value, 'name')) {
@@ -129,7 +140,7 @@ for (const [key, value] of packages) {
             if (!includes(key, value.name)) {
                 continue
             }
-            initializeDependency(value, value.repository, rootDir, pins?.get(value.name))
+            initializeDependency(value, value.repository, rootDir, pins?.get(value.name), includeExternal)
             initialized++
         }
     }

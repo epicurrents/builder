@@ -42,8 +42,9 @@
  * installing dependencies that are not part of the package repository.
  * The `rename` parameter is used to rename the install folder to match the `name` parameter. This is useful when the
  * repository contains multiple packages and the package name does not match the repository name.
- * The `external` parameter is used to indicate that the package is not part of the monorepo and should be installed
- * in the root directory instead of the `interface` directory.
+ * The `external` parameter marks a package that is not part of the monorepo and lives in the root directory. Such
+ * packages are skipped by `setup` unless `--include-external` is passed, and even then are only cloned — never
+ * installed or built by our toolchain (they have their own; e.g. OHIF uses yarn). Install and build them manually.
  * The `public` parameter (default true) marks whether the package is published from a public source. A public build
  * profile (one in `profiles/`) may not include a package with `public: false`, and the all-in default (no profile)
  * skips them so a fresh clone builds without access to any private repository; such packages are available only to
