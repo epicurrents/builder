@@ -70,7 +70,7 @@ export const packages = new Map([
             // Core must be the first @epicurrents module.
             { name: 'core' },
             // Resource modules.
-            { name: 'acc-module', public: false },
+            { name: 'acc-module' },
             { name: 'doc-module' },
             { name: 'eeg-module' },
             { name: 'emg-module' },
@@ -78,7 +78,7 @@ export const packages = new Map([
             { name: 'tab-module' },
             // Source type readers.
             { name: 'api-reader', public: false },
-            { name: 'csv-reader', public: false },
+            { name: 'csv-reader' },
             { name: 'dicom-reader' },
             { name: 'edf-reader' },
             { name: 'htm-reader' },
