@@ -103,10 +103,6 @@ export const packages = new Map([
     ['interface', {
         branch: 'main',
         name: 'interface',
-        /** Run these commands before building the package. */
-        prebuild: [
-            'npm run copy:workers',
-        ],
         /** Rename the package to the map item key value (here 'interface'). */
         rename: true,
         repository: 'https://github.com/epicurrents/interface',
