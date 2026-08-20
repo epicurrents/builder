@@ -142,8 +142,20 @@ Tests and CI
 `.github/workflows/` has only the release workflow. There is no check on a pull request, and the builder has no tests of its own even though its scripts encode non-obvious rules — profile resolution, the public/non-public split, scope parsing, manifest pinning.
 
 - **Profile and argument tests.** The public-profile guard and the scope/option parsing are exactly the kind of logic that fails silently: a mis-parsed option once made `--profile <name>` select nothing and exit successfully.
-- **An edition smoke test.** Build an edition in CI and assert the output shape — the lib, the stylesheet, `index.html`, the worker chunks — and that a trimmed edition really does exclude the modules it did not select.
+- **An edition smoke test.** Build an edition in CI and assert the output shape — the lib, the stylesheet, `index.html` — and that a trimmed edition really does exclude the modules it did not select.
 - **A pull-request workflow** running those plus `npm run typecheck`.
+
+
+Settle one Vite version across the family
+-----------------------------------------
+
+🟡 **Priority: yellow** — no symptom today, and the version-compliance rule exists because this class of drift has no symptom until it corrupts data.
+
+`@epicurrents/core` builds with Vite `^7.3.1`, matching this repository. The platform consuming the built editions is on `^8.2.1`, and the two are not the same bundler: 7 is Rollup, 8 is Rolldown, and their handling of `import.meta` in non-ESM output is what put core's worker fallback in the state described below.
+
+Nothing forces a choice while resolution stays inside each package — that is the point of the fix, and a package built with 7 works fine when consumed by 8. What does not survive drift is the shared toolchain assumption: the [version compliance](AGENTS.md#version-compliance--high-priority) rule holds because every package is built the same way, and a family where some packages are on 7 and some on 8 has quietly stopped being that. Migrating the remaining nine packages is the moment to decide, since each one pins a Vite version as it moves.
+
+The decision is which bundler the family builds on, not whether to allow both. Bump this repository and the packages together, and record the chosen version in the canonical-versions table.
 
 
 Carry the worker-resolution fix through the remaining packages

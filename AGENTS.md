@@ -12,7 +12,7 @@ npm run setup                          # clone + build every public package
 npm run build:edition -- --profile eeg # build the EEG edition → dist/eeg/
 ```
 
-`build:edition` produces a trimmed, embeddable **lib** (`epicurrents-lib.*`) plus a self-contained **standalone** folder (`index.html` + lib + workers) under `dist/<edition>/`.
+`build:edition` produces a trimmed, embeddable **lib** (`epicurrents-lib.*`) under `dist/<edition>/`, alongside an `index.html` that makes the same directory servable as a standalone viewer. Workers are carried inside the lib as inlined bundles, so there is no `workers/` directory to deploy beside it.
 
 ## Where the package internals are documented
 

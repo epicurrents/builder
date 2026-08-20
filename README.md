@@ -73,7 +73,9 @@ npm run build:edition -- --profile eeg   # → dist/eeg/
 EPI_PROFILE=eeg npm run build:edition    # equivalent
 ```
 
-This produces, under `dist/<edition>/`, a trimmed embeddable **library** (`epicurrents-lib.*`, for mounting into a host page) and a self-contained **standalone** folder (`index.html` + the library + workers, ready to serve). Only the chosen edition's packages are bundled; the rest are trimmed out.
+This produces, under `dist/<edition>/`, a trimmed embeddable **library** (`epicurrents-lib.*`, for mounting into a host page) plus an `index.html` that makes the same directory servable as a **standalone** viewer. Only the chosen edition's packages are bundled; the rest are trimmed out.
+
+The directory is everything the viewer needs. Workers are inlined into the library and constructed from `blob:` URLs, so nothing has to be served alongside it — but a host whose content security policy forbids `blob:` workers has to serve each package's standalone worker bundle and register it (see the package's own notes, e.g. `epicurrents/core/AGENTS.md`).
 
 <a name="defining-an-edition"></a>
 
