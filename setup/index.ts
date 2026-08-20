@@ -29,7 +29,12 @@ import {
     type ApplicationInterfaceConfig,
     type SetupContext,
 } from '@epicurrents/interface'
-import { memWorker, montWorker, trendWorker } from './workers/core'
+// The interface's component styles. Required explicitly because the edition consumes the interface
+// as a BUILT package: its dist build extracts every component's `<style scoped>` into one
+// stylesheet and removes the import from the emitted JS, so bundling that JS pulls in none of it.
+// Without this the edition ships a lib whose CSS carries no interface rules at all — an unstyled
+// viewer that raises no error anywhere, because nothing failed to load.
+import '@epicurrents/interface/style.css'
 import { MODULE_REGISTRARS } from './registry'
 
 // Injected at build time by the builder's vite config from the active profile's
@@ -40,14 +45,9 @@ declare const __EPI_SETUP__: Partial<ApplicationInterfaceConfig> | undefined
 const profileSetup: Partial<ApplicationInterfaceConfig> =
     typeof __EPI_SETUP__ !== 'undefined' ? __EPI_SETUP__ : {}
 
-/** Register the shared workers, then the active edition's modality registrars. */
+/** Register the active edition's modality registrars. */
 const register = async (ctx: SetupContext) => {
-    const { app, useSAB, setup } = ctx
-    if (useSAB) {
-        app.setWorkerOverride('memory-manager', memWorker)
-        app.setWorkerOverride('montage', montWorker)
-        app.setWorkerOverride('trend', trendWorker)
-    }
+    const { setup } = ctx
     const active = setup.activeModules?.length ? setup.activeModules : Object.keys(MODULE_REGISTRARS)
     for (const name of active) {
         const registrar = MODULE_REGISTRARS[name]

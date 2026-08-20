@@ -39,9 +39,12 @@ All packages under `epicurrents/` share a single toolchain. Version drift betwee
 | Tool | Version |
 |---|---|
 | TypeScript | `^5.7.0` |
-| ts-loader | `^9.5.1` |
-| webpack | `^5.73.0` |
+| Vite | `^7.3.1` |
+| ts-loader | `^9.5.1` (only in packages still on webpack) |
+| webpack | `^5.73.0` (only in packages still on webpack) |
 | tsconfig base | `epicurrents/core/tsconfig.base.json` (core extends it locally; siblings extend `@epicurrents/core/tsconfig.base.json` so it resolves standalone too) |
+
+Packages are moving from webpack to Vite one at a time; `@epicurrents/core` has migrated and the rest are tracked in [ROADMAP.md](ROADMAP.md). A package uses one or the other, never both — the two columns above are not a choice per file.
 
 **Rules:**
 
@@ -83,7 +86,7 @@ builder/
     index.ts          creates the app and runs the active edition's registrars
     registry.ts       modality key → registrar
     modules/          one registrar per modality
-    workers/          one worker-factory module per package that ships workers
+    workers/          one worker-factory module per package that does not resolve its own workers
   profiles/           edition definitions; profiles/local/ is git-ignored
   vite.config.lib.ts  per-edition library build, including registry trimming
   .github/workflows/  the release workflow
@@ -126,7 +129,7 @@ The corollary: **an empty `activeModules` means "every registrar"**, so it requi
 ### Adding a modality
 
 1. Add the package(s) to the registry in `scripts/env.mjs`, with `public: false` if the repository is not published.
-2. Add `setup/workers/<pkg>.ts` for each package that ships a worker, importing only that package.
+2. Add `setup/workers/<pkg>.ts` for each package that ships a worker **and does not resolve it itself**, importing only that package. A migrated package (`@epicurrents/core` today) inlines its own workers, and registering a factory for one of those ships the same bundle a second time.
 3. Add `setup/modules/<key>.ts` composing the core module, its study importers and the interface UI module.
 4. Register the key in `setup/registry.ts`.
 5. Add the package and the `activeModules` entry to whichever profiles should ship it — together. A package in a profile with no registrar is cloned and built but registers nothing.

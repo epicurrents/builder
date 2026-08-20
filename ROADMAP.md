@@ -144,3 +144,25 @@ Tests and CI
 - **Profile and argument tests.** The public-profile guard and the scope/option parsing are exactly the kind of logic that fails silently: a mis-parsed option once made `--profile <name>` select nothing and exit successfully.
 - **An edition smoke test.** Build an edition in CI and assert the output shape — the lib, the stylesheet, `index.html`, the worker chunks — and that a trimmed edition really does exclude the modules it did not select.
 - **A pull-request workflow** running those plus `npm run typecheck`.
+
+
+Carry the worker-resolution fix through the remaining packages
+--------------------------------------------------------------
+
+🟠 **Priority: orange** — the failing case is fixed; what remains is that nine packages still leave the outcome to the consumer's bundler.
+
+Every reader and service resolves its worker the same way: use the factory registered in `RUNTIME.WORKERS`, or fall back to constructing one from a package-relative URL.
+
+```js
+worker = getOverrideWorker ? getOverrideWorker()
+                           : new Worker(new URL(`../workers/edf.worker`, import.meta.url), { type: 'module' })
+```
+
+Packages publish untransformed `tsc` output, so that construct reaches the consumer unresolved and whichever bundler runs last decides what it means. They do not agree. Rollup rewrites it to an emitted chunk; Rolldown — which Vite 8 uses — substitutes `{}` for `import.meta`, and whether the result works then depends on whether it resolved the specifier first. When it does, the argument is an absolute `data:` URL and the empty base is harmless. When it does not, the argument stays relative and `new URL('../workers/edf.worker', undefined)` throws `Invalid URL`. That is the state core's two workers shipped in, and the `EMPTY_IMPORT_META` warning that flags it scrolls past in a successful build.
+
+`@epicurrents/core` no longer defers: it builds with Vite and imports its workers through `?worker&inline`, so `dist/` carries each one bundled and constructs it from a Blob. Nine packages still have the old form — `api-reader`, `csv-reader`, `dicom-reader`, `edf-reader`, `htm-reader`, `nic-reader`, `onnx-service`, `pyodide-service`, `wav-reader`. Find them with `grep -rn "import.meta.url" epicurrents/*/dist/`.
+
+The per-package work is core's, repeated: build with Vite, import the worker with `?worker&inline`, keep the standalone `umd/` bundle as the escape hatch for a consumer whose content security policy forbids `blob:` workers. It retires webpack from each package in the same change. Two things belong to the builder rather than the packages:
+
+- **Fail the edition build on `EMPTY_IMPORT_META`** rather than warning, so a package reintroducing the pattern cannot reach a release.
+- **Drop each package's worker registrar from `setup/workers/` as its package migrates.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
