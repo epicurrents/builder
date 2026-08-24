@@ -146,6 +146,29 @@ Tests and CI
 - **A pull-request workflow** running those plus `npm run typecheck`.
 
 
+Test doubles for core drift silently
+------------------------------------
+
+🟡 **Priority: yellow** — no production risk, but it has already cost two packages' suites and will spread as the rest gain tests.
+
+Two packages replace `@epicurrents/core` with a hand-written double rather than importing the real one. `eeg-module` aliases the whole package to `tests/mocks/epicurrents-core/` in its `vitest.config.ts`; `csv-reader` does the same for `GenericSignalReader` through `vi.mock` inside `tests/csv/CsvReader.test.ts`. Each double enumerates the members its package needed on the day it was written, and core has moved since.
+
+What makes this worth a deliberate pass is the shape of the failure: a runtime `TypeError` in whichever test first reaches the missing member, which reads as a defect in the package rather than in its stand-in.
+
+- **`eeg-module`** — `EegRecording`'s constructor subscribes to the service's `bufferRange` and `isReady`, so a double lacking `onPropertyChange` made *constructing a recording* throw, and eight tests about montages, setups and the `isActive` setter failed with it. `EegEvent.fromTemplate` needs the `GenericBiosignalEvent.labelFromTemplate` static for the same reason.
+- **`csv-reader`** — the `GenericSignalReader` double declares a fixed list of protected fields and omits `_derivationSlots`, which core initialises to `[]`. `_readSignalPart` iterates it and gets `undefined`, so four of that package's seven failures are the double rather than CSV behaviour.
+
+Nothing can catch it today: both packages' `tsconfig.json` carries `include: ["./src/**/*"]`, so the doubles are never compiled against what they stand in for. The seam that makes a fix possible is that a vitest `resolve.alias` does not affect `tsc` — a type-only import inside a double still resolves to real core.
+
+### The pass
+
+Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (eight of seventeen have any tests today).
+
+1. **Decide whether core needs doubling at all.** Neither package documents why; if the reason is import weight or worker construction rather than behaviour, importing the real classes and stubbing only the boundary is both simpler and self-maintaining.
+2. **Where a double stays, typecheck it.** Add `tests` to the package's typecheck include and have each mock class satisfy the core interface it replaces, so drift is a build error rather than a `TypeError` in an unrelated test.
+3. **Watch what the no-op stubs cost.** A stub that swallows a registration makes the behaviour behind it un-exercisable — `eeg-module`'s `onPropertyChange` stubs mean nothing can fire the `isReady` → `signalCacheStatus` reset that `6f4282d` added, so that fix now has no test and would fail silently.
+
+
 Settle one Vite version across the family
 -----------------------------------------
 
