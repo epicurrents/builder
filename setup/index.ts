@@ -16,6 +16,10 @@
  * layers. The per-modality registrars are in setup/modules/, keyed in
  * setup/registry.ts.
  *
+ * Services register the same way but are not part of the edition trimming: the
+ * Pyodide registrar is imported statically, so every profile must install
+ * `pyodide-service` even though a session only activates it through a URL flag.
+ *
  * The active edition is chosen by profile: the builder's vite config injects the
  * profile's SETUP (including `activeModules`) as `__EPI_SETUP__`, and the register
  * callback runs the registrars named in `activeModules` — or every registered
@@ -36,6 +40,7 @@ import {
 // viewer that raises no error anywhere, because nothing failed to load.
 import '@epicurrents/interface/style.css'
 import { MODULE_REGISTRARS } from './registry'
+import { registerPyodide } from './services/pyodide'
 
 // Injected at build time by the builder's vite config from the active profile's
 // `setup`. Undefined in a bare (profile-less) build, in which case every
@@ -48,6 +53,12 @@ const profileSetup: Partial<ApplicationInterfaceConfig> =
 /** Register the active edition's modality registrars. */
 const register = async (ctx: SetupContext) => {
     const { setup } = ctx
+    // Services first, so a modality registrar can see what is available. The Python interpreter is
+    // opt-in per session (`?services=pyodide` / `?advanced`), which the framework has already
+    // resolved into `setup.usePyodide` by the time this callback runs.
+    if (setup.usePyodide) {
+        registerPyodide(ctx)
+    }
     const active = setup.activeModules?.length ? setup.activeModules : Object.keys(MODULE_REGISTRARS)
     for (const name of active) {
         const registrar = MODULE_REGISTRARS[name]

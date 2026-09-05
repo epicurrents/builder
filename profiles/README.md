@@ -26,6 +26,7 @@ export default {
 ```
 
 - `packages` names entries from `scripts/env.mjs`. `core`, the `util` group and the `interface` group are always included, so a profile lists only the modules, readers and services its edition adds.
+- **Every profile needs `pyodide-service`.** The setup entry imports its registrar statically, so the package must be installed for the edition to build even when no session activates it. The service itself is opt-in per session (`?services=pyodide` / `?advanced`) and starts no interpreter until then.
 - `setup` is the interface bundle configuration. The lib build injects it as `__EPI_SETUP__`, and its `activeModules` decide which registrars in `setup/` run — and which survive bundle trimming, so an edition contains only the modules it names.
 
 **List `activeModules` explicitly.** An empty list means "every registrar in `setup/modules/`". Some registrars compose non-public packages, and rollup has to resolve a static import before it can tree-shake what the import provides, so the untrimmed build only works in a tree that has every package installed. A public edition that names its modules builds anywhere.
