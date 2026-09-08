@@ -84,6 +84,8 @@ export const packages = new Map([
             { name: 'edf-reader' },
             { name: 'htm-reader' },
             { name: 'nic-reader', public: false },
+            // Not yet published; the repository is created but has no public remote.
+            { name: 'natus-reader', public: false },
             {
                 name: 'pdf-reader',
                 prebuild: [
