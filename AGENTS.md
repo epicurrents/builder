@@ -118,6 +118,8 @@ Some packages are not published. The rule that keeps public editions buildable b
 
 **Keep the flags in step with the repositories' actual visibility.** The guard is only as good as its data: the release workflow's "only public editions are ever released" guarantee is enforced entirely by this flag, and a package wrongly marked public fails at `git clone` in CI rather than at the guard.
 
+The same split applies one level down, to a **reader** added to a modality that already exists. A non-public reader may not be named in `setup/modules/<key>.ts`, because any public profile activating that modality then has to resolve an import for a package it does not install — the trimming that would have removed it runs too late, exactly as for the worker factories below. Nor may it be named in the interface's `setups/full.example.ts`, which every external developer builds. Its home is a git-ignored `*.local.ts` setup in the interface's `src/setups/`, which `setups/standalone.ts` launches in preference to the example; `registerAllModules` is exported so such a setup adds to the example's registrations rather than restating them. A reader that reaches a released edition is one that has been published first.
+
 ### Bundle trimming, and why registrar imports matter
 
 `setup/registry.ts` statically imports every registrar so the un-trimmed file stays type-safe. When a profile names `activeModules`, the `epi-trim-registry` plugin in `vite.config.lib.ts` replaces that file's contents with a registry importing only the active registrars, and rollup drops the rest — along with their modules, readers and workers.
@@ -129,7 +131,7 @@ The corollary: **an empty `activeModules` means "every registrar"**, so it requi
 ### Adding a modality
 
 1. Add the package(s) to the registry in `scripts/env.mjs`, with `public: false` if the repository is not published.
-2. Add `setup/workers/<pkg>.ts` for each package that ships a worker **and does not resolve it itself**, importing only that package. A migrated package (`@epicurrents/core` today) inlines its own workers, and registering a factory for one of those ships the same bundle a second time.
+2. Add `setup/workers/<pkg>.ts` for each package that ships a worker **and does not resolve it itself**, importing only that package. A migrated package (`@epicurrents/core` and `@epicurrents/natus-reader` today) inlines its own workers, and registering a factory for one of those ships the same bundle a second time. Such a package needs no `workerPaths` entry in `scripts/env.mjs` either, since there is no bundle to copy.
 3. Add `setup/modules/<key>.ts` composing the core module, its study importers and the interface UI module.
 4. Register the key in `setup/registry.ts`.
 5. Add the package and the `activeModules` entry to whichever profiles should ship it — together. A package in a profile with no registrar is cloned and built but registers nothing.
