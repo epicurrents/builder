@@ -8,6 +8,10 @@
  * for a maintainer's full working tree. `external` packages (e.g. the OHIF viewer) are skipped unless
  * `--include-external` is passed, which clones them only — their install and build stay manual.
  *
+ * `--profile` and `--include-private` are read by `resolveSelection` in `scripts/profile.mjs`, which returns the
+ * package filter applied below. Through npm, options must follow `--` (`npm run setup -- --include-private`);
+ * placed before it, npm takes them as its own config and they never reach this script.
+ *
  * Original method from https://stackoverflow.com/a/20643568.
  * @package    epicurrents/builder
  * @copyright  2025 Sampsa Lohi
@@ -114,6 +118,8 @@ if (manifestPath) {
     console.info(`Reproducing from manifest '${manifestPath}' (edition ${manifest.edition}, ${pins.size} pinned packages).`)
 }
 let initialized = 0
+// Packages a scope named explicitly but the selection filter excluded — reported if nothing ran.
+const excluded = []
 for (const [key, value] of packages) {
     if (!Object.hasOwn(value, 'repository')) {
         console.error(`No repository found for ${key}.`)
@@ -128,6 +134,9 @@ for (const [key, value] of packages) {
                     return
                 }
                 if (!includes(key, pkg.name)) {
+                    if (scopeLimit?.[1] === pkg.name) {
+                        excluded.push(pkg)
+                    }
                     return
                 }
                 initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name), includeExternal)
@@ -138,12 +147,29 @@ for (const [key, value] of packages) {
                 continue
             }
             if (!includes(key, value.name)) {
+                if (scopeLimit?.[1] === value.name) {
+                    excluded.push(value)
+                }
                 continue
             }
             initializeDependency(value, value.repository, rootDir, pins?.get(value.name), includeExternal)
             initialized++
         }
     }
+}
+if (!initialized && excluded.length) {
+    // The package exists in the registry but the selection left it out; say why rather than reporting
+    // an unknown scope. npm treats an option placed before `--` as its own config and exposes it only as
+    // an `npm_config_*` variable, so the flag can be typed and still never reach this script.
+    const names = excluded.map(pkg => pkg.name).join(', ')
+    const hint = excluded.some(pkg => pkg.public === false)
+        ? process.env.npm_config_include_private
+            ? ' The --include-private flag was consumed by npm; pass it after `--`: ' +
+              `npm run setup -- ${scopes.join(' ')} --include-private`
+            : ' It is marked `public: false` in scripts/env.mjs; pass --include-private or select it from a ' +
+              'profile in profiles/local/.'
+        : ' It is not part of the selected profile.'
+    throw new Error(`Package ${names} matched the scope but was excluded from the selection.${hint}`)
 }
 if (!initialized) {
     // A scope that matches no package is a mistake, not an empty success: it used to exit 0 having
