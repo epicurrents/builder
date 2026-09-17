@@ -4,6 +4,8 @@
  * @copyright  2025 Sampsa Lohi
  * @license    Apache-2.0
  */
+import fs from 'fs'
+import path from 'path'
 
 /**
  * Packages that the application depends on, represented as a Map of:
@@ -128,20 +130,31 @@ export const interfaceDir = 'interface'
  */
 export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
 /**
+ * Names of the packages that build standalone worker bundles into their `umd/` directory, in copy
+ * order. Core comes last: a package built with webpack also emits a copy of the core workers it
+ * pulled in, and core's own build is the one that must win.
+ */
+const workerPackages = [
+    'api-reader',
+    'csv-reader',
+    'dicom-reader',
+    'edf-reader',
+    'htm-reader',
+    'natus-reader',
+    'nic-reader',
+    'pdf-reader',
+    'wav-reader',
+    'pyodide-service',
+    'core',
+]
+/**
  * Paths to worker files that need to be copied to the interface module for the application to work. Each path is an
  * array of path segments relative to the root directory.
+ *
+ * A package that is not installed is left out rather than copied from: several of these are private
+ * (see the `public` flag above), so a clone without access to them must still copy the workers of
+ * the packages it does have.
  */
-export const workerPaths = [
-    ['node_modules', '@epicurrents', 'api-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'csv-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'dicom-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'edf-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'htm-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'nic-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'pdf-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'wav-reader', 'umd'],
-    ['node_modules', '@epicurrents', 'pyodide-service', 'umd'],
-    // The other modules may contained compiled core package workers.
-    // Copy core last to overwrite any such previously copied files.
-    ['node_modules', '@epicurrents', 'core', 'umd'],
-]
+export const workerPaths = workerPackages
+    .map(name => ['node_modules', '@epicurrents', name, 'umd'])
+    .filter(segments => fs.existsSync(path.join(rootDir, ...segments)))
