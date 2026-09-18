@@ -131,8 +131,8 @@ export const interfaceDir = 'interface'
 export const rootDir = import.meta.dirname.replace(/[\/\\]scripts\/?$/, '')
 /**
  * Names of the packages that build standalone worker bundles into their `umd/` directory, in copy
- * order. Core comes last: a package built with webpack also emits a copy of the core workers it
- * pulled in, and core's own build is the one that must win.
+ * order. Core comes last, so that its own build wins over any stale copy of a core worker left in
+ * another package's directory by an earlier toolchain.
  */
 const workerPackages = [
     'api-reader',

@@ -16,7 +16,7 @@ The builder is a development tool. Another developer running the same configurat
 - **Dev editions** are built from the cloned package repositories. Fast to iterate, reproducible only as far as the commit pins go, and never published as releases.
 - **Releases** are built from published npm packages, where the registry versions and a lockfile do the pinning.
 
-**This is one mechanism with two provenances, not two build models.** The builder already consumes *built* packages: setup builds each repository (webpack for workers, tsc for the rest) and the lib build resolves `@epicurrents/*` through their `exports` maps to `dist`/`umd`, exactly as an installed package would. A workspace symlink and an installed directory resolve the same way, and `preserveSymlinks` in the lib config makes the dev layout behave like the flat one. So the mode is a source setting (`--source git|npm`), not a separate pipeline.
+**This is one mechanism with two provenances, not two build models.** The builder already consumes *built* packages: setup builds each repository with Vite and the lib build resolves `@epicurrents/*` through their `exports` maps to `dist`/`umd`, exactly as an installed package would. A workspace symlink and an installed directory resolve the same way, and `preserveSymlinks` in the lib config makes the dev layout behave like the flat one. So the mode is a source setting (`--source git|npm`), not a separate pipeline.
 
 ### Release mode is a validation gate
 
@@ -176,15 +176,15 @@ Settle one Vite version across the family
 
 `@epicurrents/core` builds with Vite `^7.3.1`, matching this repository. The platform consuming the built editions is on `^8.2.1`, and the two are not the same bundler: 7 is Rollup, 8 is Rolldown, and their handling of `import.meta` in non-ESM output is what put core's worker fallback in the state described below.
 
-Nothing forces a choice while resolution stays inside each package — that is the point of the fix, and a package built with 7 works fine when consumed by 8. What does not survive drift is the shared toolchain assumption: the [version compliance](AGENTS.md#version-compliance--high-priority) rule holds because every package is built the same way, and a family where some packages are on 7 and some on 8 has quietly stopped being that. Migrating the remaining nine packages is the moment to decide, since each one pins a Vite version as it moves.
+Nothing forces a choice while resolution stays inside each package — that is the point of the fix, and a package built with 7 works fine when consumed by 8. What does not survive drift is the shared toolchain assumption: the [version compliance](AGENTS.md#version-compliance--high-priority) rule holds because every package is built the same way, and a family where some packages are on 7 and some on 8 has quietly stopped being that. Every package pins `^7.3.1` today, so the decision is one bump, made in one place and recorded in the canonical-versions table.
 
-The decision is which bundler the family builds on, not whether to allow both. Bump this repository and the packages together, and record the chosen version in the canonical-versions table.
+The decision is which bundler the family builds on, not whether to allow both. Bump this repository and the packages together.
 
 
-Carry the worker-resolution fix through the remaining packages
---------------------------------------------------------------
+Finish the worker-resolution fix in the builder
+-----------------------------------------------
 
-🟠 **Priority: orange** — the failing case is fixed; what remains is that nine packages still leave the outcome to the consumer's bundler.
+🟠 **Priority: orange** — every package now resolves its own worker; what remains keeps a regression from reaching a release.
 
 Every reader and service resolves its worker the same way: use the factory registered in `RUNTIME.WORKERS`, or fall back to constructing one from a package-relative URL.
 
@@ -193,11 +193,11 @@ worker = getOverrideWorker ? getOverrideWorker()
                            : new Worker(new URL(`../workers/edf.worker`, import.meta.url), { type: 'module' })
 ```
 
-Packages publish untransformed `tsc` output, so that construct reaches the consumer unresolved and whichever bundler runs last decides what it means. They do not agree. Rollup rewrites it to an emitted chunk; Rolldown — which Vite 8 uses — substitutes `{}` for `import.meta`, and whether the result works then depends on whether it resolved the specifier first. When it does, the argument is an absolute `data:` URL and the empty base is harmless. When it does not, the argument stays relative and `new URL('../workers/edf.worker', undefined)` throws `Invalid URL`. That is the state core's two workers shipped in, and the `EMPTY_IMPORT_META` warning that flags it scrolls past in a successful build.
+Published untransformed, that construct reaches the consumer unresolved and whichever bundler runs last decides what it means. They do not agree. Rollup rewrites it to an emitted chunk; Rolldown — which Vite 8 uses — substitutes `{}` for `import.meta`, and whether the result works then depends on whether it resolved the specifier first. When it does, the argument is an absolute `data:` URL and the empty base is harmless. When it does not, the argument stays relative and `new URL('../workers/edf.worker', undefined)` throws `Invalid URL`. That is the state core's two workers shipped in, and the `EMPTY_IMPORT_META` warning that flags it scrolls past in a successful build.
 
-`@epicurrents/core` no longer defers: it builds with Vite and imports its workers through `?worker&inline`, so `dist/` carries each one bundled and constructs it from a Blob. Nine packages still have the old form — `api-reader`, `csv-reader`, `dicom-reader`, `edf-reader`, `htm-reader`, `nic-reader`, `onnx-service`, `pyodide-service`, `wav-reader`. Find them with `grep -rn "import.meta.url" epicurrents/*/dist/`.
+Every package now builds with Vite and imports its worker through `?worker&inline`, so `dist/` carries it bundled and constructs it from a Blob, with the standalone `umd/` bundle kept as the escape hatch for a consumer whose content security policy forbids `blob:` workers. Three depart from that shape for a reason: `onnx-service` keeps its worker a separate file, because the ONNX runtime fetches its WebAssembly at run time from a host-supplied path and inlining would bake 24 MB of base64 into the bundle; `pdf-reader` publishes pdf.js's own worker, which pdf.js takes as a URL rather than constructing; and `pyodide-service` builds its worker as an ES module, because it loads the Pyodide runtime through a dynamic import only a module worker can perform. Check the family for a relapse with `grep -rn "import.meta.url" epicurrents/*/dist/`.
 
-The per-package work is core's, repeated: build with Vite, import the worker with `?worker&inline`, keep the standalone `umd/` bundle as the escape hatch for a consumer whose content security policy forbids `blob:` workers. It retires webpack from each package in the same change. Two things belong to the builder rather than the packages:
+Two things belong to the builder rather than the packages:
 
 - **Fail the edition build on `EMPTY_IMPORT_META`** rather than warning, so a package reintroducing the pattern cannot reach a release.
-- **Drop each package's worker registrar from `setup/workers/` as its package migrates.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
+- **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.

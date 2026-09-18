@@ -40,11 +40,9 @@ All packages under `epicurrents/` share a single toolchain. Version drift betwee
 |---|---|
 | TypeScript | `^5.7.0` |
 | Vite | `^7.3.1` |
-| ts-loader | `^9.5.1` (only in packages still on webpack) |
-| webpack | `^5.73.0` (only in packages still on webpack) |
 | tsconfig base | `epicurrents/core/tsconfig.base.json` (core extends it locally; siblings extend `@epicurrents/core/tsconfig.base.json` so it resolves standalone too) |
 
-Packages are moving from webpack to Vite one at a time; `@epicurrents/core` has migrated and the rest are tracked in [ROADMAP.md](ROADMAP.md). A package uses one or the other, never both — the two columns above are not a choice per file.
+Every package builds with Vite and emits its declarations with `epicurrents-build-types`, the tool core publishes as a bin.
 
 **Rules:**
 
@@ -56,7 +54,7 @@ Packages are moving from webpack to Vite one at a time; `@epicurrents/core` has 
    npm run typecheck epicurrents/core  # scope to one package
    ```
    `scripts/typecheck.mjs` runs `tsc --noEmit` per package, prints ✓/✗, and exits non-zero if any failed. All packages type-check clean, so any error is a regression.
-4. **Both build outputs must be regenerated together** after a change to shared code. The UMD worker bundle and the TSC `dist/` output are separate artifacts; rebuilding only one leaves a stale mismatch that the type system cannot see.
+4. **Both build outputs must be regenerated together** after a change to shared code. A package with a worker builds two artifacts — the standalone bundle in `umd/` and the `dist/` output carrying the same worker inlined — and rebuilding one leaves a stale mismatch that the type system cannot see. `npm run build` in the package does both.
 
 ### Duplicate nested copies
 
