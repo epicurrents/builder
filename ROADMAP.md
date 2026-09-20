@@ -6,6 +6,22 @@ Planned and deferred work for the **builder** — the repository that assembles 
 Scope: how editions are defined, resolved, built, pinned and published. Work on signal processing, readers, modules or the interface belongs in the roadmap of the package that owns it — each package is its own repository.
 
 
+Non-public packages fall out of the maintenance scripts
+------------------------------------------------------
+
+🟠 **Priority: amber** — two defects in the same mechanism, both silent.
+
+`clean.mjs` resolves what to operate on through `resolveSelection`, the same profile-aware helper the build uses, and that helper drops non-public packages unless `--include-private` is given. So `npm run clean` cleans every public package and silently leaves the nested `@epicurrents/core` copies inside `api-reader`, `nic-reader` and `natus-reader`.
+
+That matters because cleaning is the documented remedy for a whole class of failure — [AGENTS.md](AGENTS.md) states that a package reporting missing core methods almost always has a stale nested copy, and says to run `clean`. A maintainer with the private packages checked out runs it, watches the type-check still fail on exactly those three, and has no reason to suspect the remedy skipped them. Either the default should include private packages (cleaning is maintenance, not distribution, so the public/private split buys nothing here), or the script should report what it skipped.
+
+The second defect is in the registry data the same split reads, and it is three sources disagreeing about `acc-module` and `csv-reader`. `scripts/env.mjs` marks both public. `setup/registry.ts` names both as examples of non-public packages a registrar composes, and `profiles/full.mjs` — "every modality the builder can register, from public packages only" — excludes acc accordingly.
+
+The history says which way it drifted. Both were marked non-public *because unpublished*, and the comment and the profile were written against that state; the flags were flipped back a few days later on the grounds that both are now published to npm. Neither is: both sit at `0.0.0` and neither resolves on the registry, alongside `api-reader`, which kept its flag. So the two sources that were not updated happen to describe the situation, and the flag that was updated does not.
+
+Worth settling the criterion at the same time, because it is what produced the mismatch: `public` decides whether the release workflow can `git clone` a repository with no credentials, which is a question about repository visibility rather than npm publication. A package can be public on GitHub and unpublished, or the reverse. Per this file's own scope note the flag is what makes "only public editions are ever released" true, and one wrongly marked public fails at `git clone` in CI rather than at the guard.
+
+
 Dev editions and npm releases
 -----------------------------
 
