@@ -181,6 +181,18 @@ Tests and CI
 - **A pull-request workflow** running those plus `npm run typecheck`.
 
 
+The workspace test sweep cannot be green
+-----------------------------------------
+
+🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
+
+`npm run test` runs `npm run test --workspaces --if-present`, and ten of the nineteen workspaces — `dicom-reader`, `doc-module`, `emg-module`, `htm-reader`, `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service`, `wav-reader` and `interface` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+
+The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
+
+Two ways out, and they say different things. `passWithNoTests` in each empty package's vitest config makes the sweep green and the gap invisible. Removing the `test` script from a package that has no tests makes `--if-present` skip it, so the sweep is green and the gap is visible in the manifest. The second is better until the packages gain suites, and neither substitutes for giving them one.
+
+
 Test doubles for core drift silently
 ------------------------------------
 
@@ -191,13 +203,13 @@ Two packages replace `@epicurrents/core` with a hand-written double rather than 
 What makes this worth a deliberate pass is the shape of the failure: a runtime `TypeError` in whichever test first reaches the missing member, which reads as a defect in the package rather than in its stand-in.
 
 - **`eeg-module`** — `EegRecording`'s constructor subscribes to the service's `bufferRange` and `isReady`, so a double lacking `onPropertyChange` made *constructing a recording* throw, and eight tests about montages, setups and the `isActive` setter failed with it. `EegEvent.fromTemplate` needs the `GenericBiosignalEvent.labelFromTemplate` static for the same reason.
-- **`csv-reader`** — the `GenericSignalReader` double declares a fixed list of protected fields and omits `_derivationSlots`, which core initialises to `[]`. `_readSignalPart` iterates it and gets `undefined`, so four of that package's seven failures are the double rather than CSV behaviour.
+- **`csv-reader`** — the `GenericSignalReader` double declares a fixed list of protected fields, so a field core adds and the reader iterates reads as `undefined`. The package's own suite now names each field the reader touches, which is a per-file fix rather than a defence: the next field core adds lands the same way. Its `CsvImporter` double has the second shape of the same problem — a missing *export* on the mocked module surfaces as a parse error logged by the code under test, pointing at the production code rather than the mock.
 
 Nothing can catch it today: both packages' `tsconfig.json` carries `include: ["./src/**/*"]`, so the doubles are never compiled against what they stand in for. The seam that makes a fix possible is that a vitest `resolve.alias` does not affect `tsc` — a type-only import inside a double still resolves to real core.
 
 ### The pass
 
-Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (eight of seventeen have any tests today).
+Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (nine of nineteen workspaces have any tests today).
 
 1. **Decide whether core needs doubling at all.** Neither package documents why; if the reason is import weight or worker construction rather than behaviour, importing the real classes and stubbing only the boundary is both simpler and self-maintaining.
 2. **Where a double stays, typecheck it.** Add `tests` to the package's typecheck include and have each mock class satisfy the core interface it replaces, so drift is a build error rather than a `TypeError` in an unrelated test.
@@ -238,18 +250,18 @@ Two things belong to the builder rather than the packages:
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
 
 
-The declared core range is a major version behind in fifteen packages
----------------------------------------------------------------------
+The declared core range is a major version behind in fourteen packages
+-----------------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Fifteen of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module` and `api-reader` — the two the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Fourteen of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader` and `csv-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` to the published type surface, so `^2.0.0` admits a core without it. The two packages already bumped name `^2.0.0` and need revisiting at release; only `api-reader` actually calls the new method, but a uniform range is worth more than a per-package audit of which core features each one reached for.
+The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` to the published type surface, so `^2.0.0` admits a core without it. The three packages already bumped name `^2.0.0` and need revisiting at release; only `api-reader` actually calls the new method, but a uniform range is worth more than a per-package audit of which core features each one reached for.
 
 
 Package manifests carry leftovers from the webpack era
