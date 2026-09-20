@@ -236,3 +236,29 @@ Two things belong to the builder rather than the packages:
 
 - **Fail the edition build on `EMPTY_IMPORT_META`** rather than warning, so a package reintroducing the pattern cannot reach a release.
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
+
+
+The declared core range is a major version behind in fifteen packages
+---------------------------------------------------------------------
+
+🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
+
+Core is at 2.0.0. Fifteen of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module` and `api-reader` — the two the current audit sweep has opened — name `^2.0.0`.
+
+Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
+
+Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
+
+The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` to the published type surface, so `^2.0.0` admits a core without it. The two packages already bumped name `^2.0.0` and need revisiting at release; only `api-reader` actually calls the new method, but a uniform range is worth more than a per-package audit of which core features each one reached for.
+
+
+Package manifests carry leftovers from the webpack era
+-------------------------------------------------------
+
+🔵 **Priority: blue** — no symptom; the value is that the next reader is not misled.
+
+Twelve packages ship a `.env.example`, eleven of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. Three packages (`eeg-module`, `emg-module`, `ncs-module`) still carry a `dotenv` devDependency for them. The twelfth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
+
+A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader` dropped its copy during its audit; the rest should go the same way, with the `dotenv` dependencies.
+
+The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.
