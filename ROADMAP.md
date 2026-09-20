@@ -6,6 +6,25 @@ Planned and deferred work for the **builder** — the repository that assembles 
 Scope: how editions are defined, resolved, built, pinned and published. Work on signal processing, readers, modules or the interface belongs in the roadmap of the package that owns it — each package is its own repository.
 
 
+Worker and library builds no longer need their current order
+------------------------------------------------------------
+
+🔵 **Priority: blue** — diagnosability, not correctness; a one-line change in nine packages.
+
+Every package that ships a worker runs `npm run build:workers && npm run build:tsc`. The order is a relic: when declarations were emitted through path-replacement rather than by `epicurrents-build-types`, running the type build first could disturb the worker bundle. Neither half depends on the other now. Both read only `src/`, they write to separate directories, and the worker build sets `emptyOutDir: false`, so neither can clobber the other — running them reversed in core produces byte-identical `dist/` and `umd/`.
+
+What the order costs is the ability to answer "is this built?" from timestamps. `build:workers` running first means `umd/` is always older than `dist/` after a *successful* build, so the obvious staleness check reports every package as stale, permanently, and the genuine case — a sibling's worker bundle predating a core change, which inlining makes invisible otherwise — cannot be distinguished from the normal one. Building the library first makes the artifact timestamps monotonic and the check mean what it looks like it means.
+
+Two ways to take it, and they trade against each other:
+
+- **Reverse the order.** Conservative, keeps the sequence explicit, and buys the timestamp property.
+- **Run the two concurrently**, with `npm-run-all -p` or equivalent. They are provably independent, so this is sound and cuts build time across a nine-package sweep — but concurrent writes give up the monotonic timestamps again, which is the thing worth having.
+
+The one ordering that must survive either way is `build:lib` before `build:types` inside `build:tsc`: the library build sets `emptyOutDir: true` on `dist/`, so running it second deletes the declarations `tsc` just emitted. That constraint is probably what the current order was protecting in its original form.
+
+Worth folding into each package as the audit sweep opens it, rather than as a nine-package commit of its own. Changing one package and not the rest is worse than changing none, since the whole value is being able to trust the check everywhere.
+
+
 Non-public packages fall out of the maintenance scripts
 ------------------------------------------------------
 
