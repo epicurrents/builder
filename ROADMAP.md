@@ -261,7 +261,7 @@ Nothing fails, because nothing resolves through the range. The workspace symlink
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` to the published type surface, so `^2.0.0` admits a core without it. The three packages already bumped name `^2.0.0` and need revisiting at release; only `api-reader` actually calls the new method, but a uniform range is worth more than a per-package audit of which core features each one reached for.
+The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. The three packages already bumped name `^2.0.0` and need revisiting at release — `api-reader` calls the method and `csv-reader` extends the class, so for those two the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name.
 
 
 Package manifests carry leftovers from the webpack era
