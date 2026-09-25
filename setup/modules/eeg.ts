@@ -2,8 +2,8 @@
  * EEG edition registrar.
  *
  * Composes, for the `eeg` modality: the core EEG module runtime, its EDF/BDF and
- * DICOM study importers (each wrapped in an `EegStudyLoader`), and the interface
- * EEG UI module. This composition is a consumer-scope
+ * DICOM study importers (each wrapped in an `EegStudyLoader`), the EDF exporter,
+ * and the interface EEG UI module. This composition is a consumer-scope
  * concern — it spans several core packages (`eeg-module`, `edf-reader`,
  * `dicom-reader`) and the interface layer (`@epicurrents/interface/modules/eeg`),
  * so it lives in the builder rather than in any one package. See setup/index.ts
@@ -15,12 +15,12 @@
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceEegModule from '@epicurrents/interface/modules/eeg'
 import * as eegModule from '@epicurrents/eeg-module'
-import { EdfImporter, EdfWorkerSubstitute } from '@epicurrents/edf-reader'
+import { EdfExporter, EdfImporter, EdfWorkerSubstitute } from '@epicurrents/edf-reader'
 import { DicomImporter, DicomWorkerSubstitute } from '@epicurrents/dicom-reader'
 import { dcmWorker } from '../workers/dicom'
-import { edfWorker } from '../workers/edf'
+import { edfWorker, edfWriterWorker } from '../workers/edf'
 
-/** Register the EEG module, its EDF/DICOM importers and the interface EEG UI. */
+/** Register the EEG module, its EDF/DICOM importers, the EDF exporter and the interface EEG UI. */
 export const registerEeg = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {
     app.registerModule('eeg', eegModule)
     // The eeg module ships useMemoryManager=false; opt it into the shared-memory
@@ -31,10 +31,14 @@ export const registerEeg = ({ app, useSAB, registerInterfaceModule }: SetupConte
         const eegSAB = window.__EPICURRENTS__.RUNTIME!.SETTINGS.getFieldValue('eeg.useMemoryManager')
         return useSAB && eegSAB ? edfWorker() : new EdfWorkerSubstitute()
     })
-    const eegEdfLoader = new eegModule.EegStudyLoader('EegEdfLoader', ['eeg'], edfLoader)
+    // The exporter encodes in the writer worker and transfers the finished file back to the main thread.
+    const edfExporter = new EdfExporter()
+    edfExporter.setWorkerOverride(edfWriterWorker)
+    const eegEdfLoader = new eegModule.EegStudyLoader('EegEdfLoader', ['eeg'], edfLoader, edfExporter)
     app.registerStudyImporter('eeg/edf-file', 'Open EDF file', 'file', eegEdfLoader)
     app.registerStudyImporter('eeg/edf-folder', 'Open EDF files from folder', 'folder', eegEdfLoader)
     app.registerStudyImporter('eeg/edf-url', 'Open EDF from URL', 'url', eegEdfLoader)
+    app.registerStudyExporter('eeg/edf-export', 'Export as de-identified EDF', 'file', eegEdfLoader)
     const dcmLoader = new DicomImporter()
     dcmLoader.setWorkerOverride('eeg', () => {
         const eegSAB = window.__EPICURRENTS__.RUNTIME!.SETTINGS.getFieldValue('eeg.useMemoryManager')
