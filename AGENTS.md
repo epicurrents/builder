@@ -62,6 +62,12 @@ Every package declares `@epicurrents/core` and the shared utilities as dependenc
 
 If a package suddenly reports `TS2339` for methods that exist on a core base class, the cause is almost always a stale nested `@epicurrents/core` shadowing the workspace symlink — run `node scripts/clean.mjs`.
 
+**A root `npm install` recreates them, so treat one as a step that has to be followed by a clean.** Installing at the root is not neutral: a package whose declared core range does not admit the version checked out under `epicurrents/core` gets a registry copy installed inside its own `node_modules`, and the root lockfile is git-ignored, so nothing records that this has happened. While any package still pins an older major than core carries, a plain `npm install` is enough to break the workspace.
+
+The symptom is not the `TS2339` above but `TS2307`, and it names the copy it found: *Cannot find module `@epicurrents/core/types` … There are types at `epicurrents/<pkg>/node_modules/@epicurrents/core/dist/types/index.d.ts`, but this result could not be resolved under your current `moduleResolution` setting.* A `moduleResolution` suggestion in a package that has never had a resolution problem is the tell; the fix is the clean, not the setting.
+
+**`npm run clean` honours the public/non-public split, so on a maintainer's full tree it is not enough on its own.** With no scope it cleans only the packages a default setup would install, leaving the nested copies of every `public: false` package in place and the typecheck still failing for them. Pass `--include-private` to reach those, and check with `ls -d epicurrents/*/node_modules/@epicurrents` that none is left.
+
 ---
 
 ## Code comment conventions
