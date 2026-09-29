@@ -186,7 +186,7 @@ The workspace test sweep cannot be green
 
 🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
 
-`npm run test` runs `npm run test --workspaces --if-present`, and ten of the nineteen workspaces — `dicom-reader`, `doc-module`, `emg-module`, `htm-reader`, `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service`, `wav-reader` and `interface` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+`npm run test` runs `npm run test --workspaces --if-present`, and seven of the nineteen workspaces — `emg-module`, `htm-reader`, `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
 
 The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
 
@@ -250,18 +250,18 @@ Two things belong to the builder rather than the packages:
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
 
 
-The declared core range is a major version behind in fourteen packages
------------------------------------------------------------------------
+The declared core range is a major version behind in twelve packages
+---------------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Fourteen of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader` and `csv-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Twelve of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader` and `doc-module` — the ones the current audit sweep has opened — name `^2.0.0`.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0`, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. The three packages already bumped name `^2.0.0` and need revisiting at release — `api-reader` calls the method and `csv-reader` extends the class, so for those two the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name.
+The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the three that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader` and `dicom-reader` extend the class, so for those three the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module` and `doc-module` use neither, so `^2.0.0` states what they were verified against.
 
 
 Package manifests carry leftovers from the webpack era
@@ -269,8 +269,8 @@ Package manifests carry leftovers from the webpack era
 
 🔵 **Priority: blue** — no symptom; the value is that the next reader is not misled.
 
-Twelve packages ship a `.env.example`, eleven of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. Three packages (`eeg-module`, `emg-module`, `ncs-module`) still carry a `dotenv` devDependency for them. The twelfth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
+Eleven packages ship a `.env.example`, ten of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. Three packages (`eeg-module`, `emg-module`, `ncs-module`) still carry a `dotenv` devDependency for them. The eleventh, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
 
-A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader` dropped its copy during its audit; the rest should go the same way, with the `dotenv` dependencies.
+A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader` and `doc-module` dropped their copies during their audits; the rest should go the same way, with the `dotenv` dependencies.
 
 The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.
