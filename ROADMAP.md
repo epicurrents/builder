@@ -186,7 +186,7 @@ The workspace test sweep cannot be green
 
 🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
 
-`npm run test` runs `npm run test --workspaces --if-present`, and six of the nineteen workspaces — `htm-reader`, `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+`npm run test` runs `npm run test --workspaces --if-present`, and five of the nineteen workspaces — `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
 
 The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
 
@@ -259,14 +259,59 @@ Two things belong to the builder rather than the packages:
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
 
 
-The declared core range is a major version behind in ten packages
+Every worker that imports the core barrel carries about 460 kB of it
+-------------------------------------------------------------------
+
+🟠 **Priority: amber** — no correctness risk, and roughly 4 MB of bundle across the family, most of it inlined into `dist/` and paid whether or not the worker runs.
+
+A worker bundle is self-contained: it cannot resolve a bare specifier, so its dependencies are bundled in, and since the Vite migration it is also inlined into `dist/` as a source string. Its size is therefore paid by every consumer of the package, on load, whether or not the worker is ever constructed.
+
+Importing one symbol from the `@epicurrents/core` barrel costs about 460 kB of that budget. Measured in a worker bundle, same rollup and `treeshake: true` throughout:
+
+| Import | Bundle |
+|---|---|
+| `import { SETTINGS } from '@epicurrents/core'` | 472.5 kB |
+| `import { validateCommissionProps } from '@epicurrents/core/util'` | 43.1 kB |
+| `import { SETTINGS } from '@epicurrents/core/config'` | 14.3 kB |
+
+Two things combine to produce it. Core declares no `sideEffects` in its manifest, so a bundler must assume every module in the graph may have top-level side effects and cannot drop one merely because nothing references its exports — it still removes unused declarations, which is why the figure is 472 kB rather than all of core. And `dist/index.js` re-exports every subtree, so importing anything from the root puts `assets`, `config`, `errors`, `events`, `runtime`, `util` and `workers` into the graph for rule one to keep. The side effects are real, not hypothetical: core's modules build registries and call `safeObjectFrom` and `Log` at module scope.
+
+Seven worker entry points import the barrel — `api-reader`, `csv-reader`, `dicom-reader`, `edf-reader`, `natus-reader`, `nic-reader` and `wav-reader` — and their bundles cluster where that predicts: 478.6 kB for `api-reader`'s, which is the probe figure plus its own code, and 571–586 kB for the five readers with a format to parse. Core's own workers import internal relative paths instead and sit at 111 kB and 190 kB, and `htm-reader`'s two, after its audit removed the barrel import, at 47 kB and 179 kB.
+
+Two routes, and they are not equivalent:
+
+- **Import from a subpath.** Per-package, immediate, and needs no promise about core: `exports` already declares `./assets`, `./config`, `./events`, `./runtime`, `./util` and `./workers`. This is what the `htm-reader` pass used, alongside dropping the import entirely where nothing read the value.
+- **Declare `"sideEffects": false` on core.** One line, fixes every consumer including future ones, and is an assertion that has to be earned: if any core module registers something by being imported, claiming purity lets a bundler drop it and the failure is a missing registration at runtime rather than a build error. Verifying it means auditing core's module-scope statements, which is worth doing anyway.
+
+Neither is a reason to reach for the barrel less carefully in the meantime. A worker importing `SETTINGS` to hold a value nothing in it reads is the case to look for first — that was `htm-reader`'s, where the settings were passed to a processor, stored, and never consulted.
+
+
+Imported files leak a blob URL each
+-----------------------------------
+
+🔵 **Priority: blue** — a session-length leak of every imported file, bounded by how many a user opens.
+
+`URL.createObjectURL` is called for every imported file and `revokeObjectURL` is called for none of them. Core does it in eight places, `GenericStudyImporter` and `GenericStudyLoader` among them, and the readers follow — so each imported file stays reachable, and its bytes unreclaimable, until the page is closed. For a study of EDF recordings that is the whole recording per file.
+
+The three revocation sites that do exist are all in export paths, where the URL is created and consumed in the same function. The import path has no owner for the URL's lifetime, which is the actual gap: the study file carries it, the study outlives the import, and nothing is positioned to decide when it is finished with.
+
+Fixing it means giving that lifetime an owner in core — most naturally the study context, revoking on destroy — rather than patching the readers, since a reader does not know when the study is done. Worth noting that some readers prefer the `File` over the URL when both are present, so for those the URL is created, never read and never freed.
+
+
+The declared core range is a major version behind in eight packages
 -------------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Nine of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module` and `emg-module` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Eight of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
 
-Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
+Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1.
+
+**The per-package lockfiles are the same problem one layer down, and they outrank the range.** Six packages commit a `package-lock.json`, and five pin a core that predates 1.0 — `0.3.0-2` in `eeg-module`, `emg-module`, `pdf-reader` and `pyodide-service`, `0.2.0-1` in `onnx-service` — resolved from the registry rather than linked. `setup` installs each package with `npm i` against its own lockfile, so a fresh clone gets that version whatever the range says, and the two packages whose audits already corrected the range to `^2.0.0` have it undone by their own lock. `htm-reader`'s was regenerated during its pass and is the only one that agrees with its manifest.
+
+Regenerating a lock has to happen outside the workspace to work at all: the packages are workspace members, so `npm install --package-lock-only` run inside one walks up to the root and leaves the package's own lock untouched, reporting success. Copying the manifest to a scratch directory and generating there is what produces a lock that describes the standalone install `setup` actually performs.
+
+The other three packages that carry no lockfile at all — `acc-module`, `edf-reader` and the rest — are a separate question this does not settle: whether a package published to a registry and also built inside a workspace should commit one. Whichever way it goes, the six should agree. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
@@ -278,17 +323,17 @@ Eight packages have a lint script that cannot run
 
 🟠 **Priority: amber** — the failure reads as a configuration problem rather than a missing or absent file, so it survives being looked at.
 
-Nine of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other eight have a `lint` script and nothing ESLint 9 will read, in three shapes:
+Ten of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other seven have a `lint` script and nothing ESLint 9 will read, in three shapes:
 
 | Shape | Packages | What is there |
 |---|---|---|
 | Misnamed | `ncs-module` | `.eslint.config.mjs` — the right content under a leading dot, so the file is never looked for |
-| Wrong format | `htm-reader`, `onnx-service`, `pyodide-service`, `tab-module`, `wav-reader` | `.eslintrc.cjs`, the ESLint 8 format |
+| Wrong format | `onnx-service`, `pyodide-service`, `tab-module`, `wav-reader` | `.eslintrc.cjs`, the ESLint 8 format |
 | Absent | `natus-reader`, `nic-reader` | No configuration file at all; `natus-reader` declares no `eslint` dependency either, and `nic-reader` pins ESLint 8 |
 
-None of the three reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the five on an eslintrc, actively misleading for `ncs-module` — whose configuration is already flat and merely misnamed — and beside the point for the two that have none.
+None of the three reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc, actively misleading for `ncs-module` — whose configuration is already flat and merely misnamed — and beside the point for the two that have none.
 
-`emg-module` had the identical misnaming and the fix was the rename plus the two `@stylistic` plugins the family rule set references. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename.
+`emg-module` had the identical misnaming and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename.
 
 What makes this a family-level item rather than eight package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
 
@@ -298,8 +343,8 @@ Package manifests carry leftovers from the webpack era
 
 🔵 **Priority: blue** — no symptom; the value is that the next reader is not misled.
 
-Eight packages ship a `.env.example`, seven of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. One package (`ncs-module`) still carries a `dotenv` devDependency for them. The eighth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
+Six packages ship a `.env.example`, five of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. One package (`ncs-module`) still carries a `dotenv` devDependency for them. The sixth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
 
-A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader`, `doc-module`, `edf-reader`, `eeg-module` and `emg-module` dropped their copies during their audits; the rest should go the same way, with the `dotenv` dependency.
+A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` dropped their copies during their audits; the rest should go the same way, with the `dotenv` dependency.
 
 The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.
