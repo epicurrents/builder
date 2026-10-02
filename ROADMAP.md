@@ -194,6 +194,24 @@ The effect is that the sweep's exit code carries no information, and a real fail
 Two ways out, and they say different things. `passWithNoTests` in each empty package's vitest config makes the sweep green and the gap invisible. Removing the `test` script from a package that has no tests makes `--if-present` skip it, so the sweep is green and the gap is visible in the manifest. The second is better until the packages gain suites, and neither substitutes for giving them one.
 
 
+Two signal readers' worker substitutes answer a subset of the commission vocabulary
+----------------------------------------------------------------------------------
+
+🟠 **Priority: amber** — the failure is a study that cannot be closed, on the no-SharedArrayBuffer path, and one of the two packages has no tests at all.
+
+Core added `SignalReaderWorkerSubstitute` precisely to stop a package hand-writing this. It runs the worker's own handlers on the main thread, so the vocabulary cannot drift from the worker's; a substitute built on `ServiceWorkerSubstitute` instead answers the actions its author enumerated and fails every other with *"Action X is not implemented"*. That is not a degraded fallback. `GenericService.shutdown` and `unload` both await a commission before tearing anything down and a failed commission rejects, so a missing handler does not slow a study — it leaves it impossible to close.
+
+Measured against the twelve `SignalReaderWorker` answers, after `csv-reader`, `dicom-reader`, `natus-reader` and `nic-reader` migrated:
+
+| Package | Base | Hand-written cases | Missing |
+|---|---|---|---|
+| `edf-reader` | `ServiceWorkerSubstitute` | 10 | `release-signal-arrays`, `reset-network`, `set-buffer-range` |
+| `wav-reader` | `ServiceWorkerSubstitute` | 5 | `release-cache`, `release-signal-arrays`, `request-signals`, `reset-network`, `set-buffer-range`, `set-interruptions`, `shutdown` |
+
+`wav-reader` is the one to do first despite being the smaller package: it is missing `shutdown`, which is the handler whose absence produces the unclosable study, and it is one of the four packages with no test files, so nothing would report it. `edf-reader`'s three are narrower and none of them is `shutdown`.
+
+The migration is small — `nic-reader`'s replaced 136 lines of `switch` with 51 and needed only `setup-worker` registered over the shared handlers — but it is not purely mechanical in one respect worth knowing before starting. Adopting the shared base makes the package *start* answering the commissions it used to refuse, and an action refused by accident can be one that should be refused on purpose: `nic-reader` serves its segments as one concatenated timeline, so an interruption table would displace every later read, and the migration had to state that refusal deliberately in both the worker and the substitute to keep the behaviour the subset had been providing by omission. Check each migrating package for a commission its reader genuinely cannot honour.
+
 Test doubles for core drift silently
 ------------------------------------
 
@@ -327,7 +345,7 @@ The declared core range is a major version behind in six packages
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Six of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `natus-reader` and `ncs-module` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Five of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `natus-reader`, `ncs-module` and `nic-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1.
 
@@ -343,24 +361,19 @@ The other three packages that carry no lockfile at all — `acc-module`, `edf-re
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the four that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader` and `natus-reader` extend the class, so for those four the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
+The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the five that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader`, `natus-reader` and `nic-reader` extend the class, so for those five the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
 
 
-Five packages have a lint script that cannot run
+Four packages have a lint script that cannot run
 ------------------------------------------------
 
 🟠 **Priority: amber** — the failure reads as a configuration problem rather than a missing or absent file, so it survives being looked at.
 
-Twelve of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other five have a `lint` script and nothing ESLint 9 will read, in two shapes:
+Thirteen of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The remaining four — `onnx-service`, `pyodide-service`, `tab-module` and `wav-reader` — have a `lint` script and an `.eslintrc.cjs`, the ESLint 8 format, which ESLint 9 will not read. It exits pointing at the flat-config migration guide, which for these four is the correct advice.
 
-| Shape | Packages | What is there |
-|---|---|---|
-| Wrong format | `onnx-service`, `pyodide-service`, `tab-module`, `wav-reader` | `.eslintrc.cjs`, the ESLint 8 format |
-| Absent | `nic-reader` | No configuration file at all, and ESLint 8 pinned in `devDependencies` |
+`nic-reader` was the one package with no configuration file at all, and it failed in a third way worth recording because the message names nothing relevant. It pinned ESLint 8, under which `eslint src` lints `.js` by default, so the run exited 2 with *"No files matching the pattern src were found. Please check for typing mistakes in the pattern."* — a complaint about the argument, from a tool that had found no config and would not have read one. A package reporting that is not misconfigured in its script; it has never linted a line.
 
-Neither shape reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc and beside the point for the one that has none.
-
-`emg-module` and `ncs-module` each had the configuration under a leading dot, where ESLint never looks for it, and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten and `ncs-module` twenty-two, where core reports 613. Size predicts it better than age does — both of those are small packages.
+`emg-module` and `ncs-module` each had the configuration under a leading dot, where ESLint never looks for it, and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies; `nic-reader` had no configuration and a pinned ESLint 8 whose packages shadowed the hoisted 9, so the stale `eslint`, `@eslint` and `@typescript-eslint` directories under its own `node_modules` had to go before the config could be read. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten, `nic-reader` thirteen and `ncs-module` twenty-two, where core reports 613. Size predicts it better than age does — all three of those are small packages.
 
 What makes this a family-level item rather than five package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
 
