@@ -78,15 +78,16 @@ Centralise the `__EPICURRENTS__` declaration in core
 
 🟢 **Priority: green** — small, overdue, and pays for itself immediately.
 
-All 17 packages carry their own `globals.d.ts` declaring the shape of `window.__EPICURRENTS__`, and they have already drifted: 21 lines in `acc-module`, 34 in most readers, 42 in `wav-reader` and `ncs-module`, 59 in `pyodide-service`. Seventeen subtly different opinions about one runtime object, none of which the compiler can reconcile.
+The per-package `globals.d.ts` files that each declared the shape of `window.__EPICURRENTS__` are gone: measured 2026-10-02, no `epicurrents/*` package declares the global any more, and the `shims.d.ts` files that replaced them run 7 to 25 lines and declare other things. The two remaining declarations are both the interface's, in `globals.ambient.d.ts` and `core-global-augment.d.ts`.
 
-Core cannot be the source of truth today for a mechanical reason: `EpicurrentsGlobal` is a bare `type` — not exported — declared inside a `.d.ts` that tsc consumes as ambient input and never emits. Nothing reaches `dist`, and no `declare global` ships at all. That is presumably why every package hand-rolls it.
+So the drift this item was opened for has been absorbed by the sweep, one package at a time. What is left is the reason the drift was possible: core cannot be the source of truth today, because `EpicurrentsGlobal` is a bare `type` — not exported — declared inside a `.d.ts` that tsc consumes as ambient input and never emits. Nothing reaches `dist`, and no `declare global` ships at all. That is why each package hand-rolled its own, and why the interface still does.
 
 The work:
 
 1. Export the type from core and actually ship it — move it into an emitted module, or add the declaration file to the emit.
-2. Have core ship the `declare global` itself. Ambient declarations propagate to every consumer, so one copy types the whole graph and the packages delete their `globals.d.ts` outright rather than importing the type and re-declaring the window.
-3. Decide the field's optionality deliberately. A non-optional `__EPICURRENTS__` lies about the window before the app boots; making it optional forces `?.` or `!` at every use site, and the codebase is currently inconsistent about that anyway. The next item changes the answer — if the global object is created at module-evaluation time, the field is genuinely always present and only its *contents* are lifecycle-dependent.
+2. Have core ship the `declare global` itself. Ambient declarations propagate to every consumer, so one copy types the whole graph and a consumer needs no declaration of its own rather than importing the type and re-declaring the window.
+3. Fold the interface's two declarations into it, which is the part still outstanding.
+4. Decide the field's optionality deliberately. A non-optional `__EPICURRENTS__` lies about the window before the app boots; making it optional forces `?.` or `!` at every use site, and the codebase is currently inconsistent about that anyway. The next item changes the answer — if the global object is created at module-evaluation time, the field is genuinely always present and only its *contents* are lifecycle-dependent.
 
 Type-only imports erase, so none of this adds a byte to any bundle. It is also the prerequisite for the plugin API below.
 
@@ -186,7 +187,7 @@ The workspace test sweep cannot be green
 
 🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
 
-`npm run test` runs `npm run test --workspaces --if-present`, and five of the twenty-two workspaces — `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+`npm run test` runs `npm run test --workspaces --if-present`, and four of the twenty-two workspaces — `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
 
 The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
 
@@ -218,7 +219,7 @@ Nothing catches it in `csv-reader` today: its `tsconfig.json` carries `include: 
 
 ### The pass
 
-Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (seventeen of twenty-two workspaces have tests today).
+Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (eighteen of twenty-two workspaces have tests today).
 
 1. **Decide whether core needs doubling at all.** Neither package documents why; if the reason is import weight or worker construction rather than behaviour, importing the real classes and stubbing only the boundary is both simpler and self-maintaining.
 2. **Where a double stays, typecheck the tests against real core.** `eeg-module`'s [tsconfig.test.json](epicurrents/eeg-module/tsconfig.test.json) is the worked example, wired into `npm test` as a `test:types` step ahead of the unit run. Having each mock class satisfy the core interface it replaces is the stronger form and would catch a wrongly-defaulted field too, but it costs a complete stand-in for core's type surface; the weaker form catches the assertions that verify nothing, which is the failure that had already happened.
@@ -321,12 +322,12 @@ The three revocation sites that do exist are all in export paths, where the URL 
 Fixing it means giving that lifetime an owner in core — most naturally the study context, revoking on destroy — rather than patching the readers, since a reader does not know when the study is done. Worth noting that some readers prefer the `File` over the URL when both are present, so for those the URL is created, never read and never freed.
 
 
-The declared core range is a major version behind in seven packages
--------------------------------------------------------------------
+The declared core range is a major version behind in six packages
+-----------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Seven of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `natus-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Six of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `natus-reader` and `ncs-module` — the ones the current audit sweep has opened — name `^2.0.0`.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1.
 
@@ -342,27 +343,26 @@ The other three packages that carry no lockfile at all — `acc-module`, `edf-re
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the four that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader` and `natus-reader` extend the class, so for those four the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
+The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the four that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader` and `natus-reader` extend the class, so for those four the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
 
 
-Six packages have a lint script that cannot run
------------------------------------------------
+Five packages have a lint script that cannot run
+------------------------------------------------
 
 🟠 **Priority: amber** — the failure reads as a configuration problem rather than a missing or absent file, so it survives being looked at.
 
-Eleven of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other six have a `lint` script and nothing ESLint 9 will read, in three shapes:
+Twelve of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other five have a `lint` script and nothing ESLint 9 will read, in two shapes:
 
 | Shape | Packages | What is there |
 |---|---|---|
-| Misnamed | `ncs-module` | `.eslint.config.mjs` — the right content under a leading dot, so the file is never looked for |
 | Wrong format | `onnx-service`, `pyodide-service`, `tab-module`, `wav-reader` | `.eslintrc.cjs`, the ESLint 8 format |
 | Absent | `nic-reader` | No configuration file at all, and ESLint 8 pinned in `devDependencies` |
 
-None of the three reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc, actively misleading for `ncs-module` — whose configuration is already flat and merely misnamed — and beside the point for the one that has none.
+Neither shape reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc and beside the point for the one that has none.
 
-`emg-module` had the identical misnaming and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten, where core reports 613.
+`emg-module` and `ncs-module` each had the configuration under a leading dot, where ESLint never looks for it, and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten and `ncs-module` twenty-two, where core reports 613. Size predicts it better than age does — both of those are small packages.
 
-What makes this a family-level item rather than eight package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
+What makes this a family-level item rather than five package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
 
 
 Package manifests carry leftovers from the webpack era
@@ -370,8 +370,8 @@ Package manifests carry leftovers from the webpack era
 
 🔵 **Priority: blue** — no symptom; the value is that the next reader is not misled.
 
-Six packages ship a `.env.example`, five of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. One package (`ncs-module`) still carries a `dotenv` devDependency for them. The sixth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
+Five packages ship a `.env.example`, four of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. The fifth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
 
-A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` dropped their copies during their audits; the rest should go the same way, with the `dotenv` dependency.
+A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` dropped their copies during their audits; `ncs-module` was the one still carrying a `dotenv` devDependency for them, and that went with it. The rest should go the same way.
 
 The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.
