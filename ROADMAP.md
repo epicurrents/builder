@@ -275,14 +275,12 @@ Two things belong to the builder rather than the packages:
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
 
 
-Every worker that imports the core barrel carries about 460 kB of it
--------------------------------------------------------------------
+A worker importing the core barrel no longer carries 460 kB of it
+----------------------------------------------------------------
 
-🟠 **Priority: amber** — no correctness risk, and roughly 4 MB of bundle across the family, most of it inlined into `dist/` and paid whether or not the worker runs.
+✅ **Closed 2026-10-02** — core declares `"sideEffects": false`, which is the second of the two routes below and the one that fixes every consumer at once.
 
-A worker bundle is self-contained: it cannot resolve a bare specifier, so its dependencies are bundled in, and since the Vite migration it is also inlined into `dist/` as a source string. Its size is therefore paid by every consumer of the package, on load, whether or not the worker is ever constructed.
-
-Importing one symbol from the `@epicurrents/core` barrel costs about 460 kB of that budget. Measured in a worker bundle, same rollup and `treeshake: true` throughout:
+A worker bundle is self-contained: it cannot resolve a bare specifier, so its dependencies are bundled in, and since the Vite migration it is also inlined into `dist/` as a source string. Its size is therefore paid by every consumer of the package, on load, whether or not the worker is ever constructed. Importing one symbol from the `@epicurrents/core` barrel used to cost about 460 kB of that budget, measured in a worker bundle with the same rollup and `treeshake: true` throughout:
 
 | Import | Bundle |
 |---|---|
@@ -290,16 +288,25 @@ Importing one symbol from the `@epicurrents/core` barrel costs about 460 kB of t
 | `import { validateCommissionProps } from '@epicurrents/core/util'` | 43.1 kB |
 | `import { SETTINGS } from '@epicurrents/core/config'` | 14.3 kB |
 
-Two things combine to produce it. Core declares no `sideEffects` in its manifest, so a bundler must assume every module in the graph may have top-level side effects and cannot drop one merely because nothing references its exports — it still removes unused declarations, which is why the figure is 472 kB rather than all of core. And `dist/index.js` re-exports every subtree, so importing anything from the root puts `assets`, `config`, `errors`, `events`, `runtime`, `util` and `workers` into the graph for rule one to keep. The side effects are real, not hypothetical: core's modules build registries and call `safeObjectFrom` and `Log` at module scope.
+Two things combined to produce it. Core declared no `sideEffects`, so a bundler had to assume every module in the graph might have top-level side effects and could not drop one merely because nothing referenced its exports — it still removed unused declarations, which is why the figure was 472 kB rather than all of core. And `dist/index.js` re-exports every subtree, so importing anything from the root put `assets`, `config`, `errors`, `events`, `runtime`, `util` and `workers` into the graph for rule one to keep.
 
-Seven worker entry points import the barrel — `api-reader`, `csv-reader`, `dicom-reader`, `edf-reader`, `natus-reader`, `nic-reader` and `wav-reader` — and their bundles cluster where that predicts: 478.6 kB for `api-reader`'s, which is the probe figure plus its own code, and 571–586 kB for the five readers with a format to parse. Core's own workers import internal relative paths instead and sit at 111 kB and 190 kB, and `htm-reader`'s two, after its audit removed the barrel import, at 47 kB and 179 kB.
+The declaration was the route that had to be earned, because if any core module registered something by being imported, claiming purity would let a bundler drop it and the failure would be a missing registration at runtime rather than a build error. The audit that demanded found the module-scope statements were value construction — the vocabulary JSON is a value import and `SETTINGS` is a value — rather than registration, and the three worker entries were split out of their class modules so that nothing in the package binds `onmessage` by being imported. Core's own [AGENTS.md](epicurrents/core/AGENTS.md) carries the obligation that keeps the assertion true.
 
-Two routes, and they are not equivalent:
+Every standalone worker bundle in the family after it, against the 478.6 kB and 571–586 kB the seven barrel importers measured before:
 
-- **Import from a subpath.** Per-package, immediate, and needs no promise about core: `exports` already declares `./assets`, `./config`, `./events`, `./runtime`, `./util` and `./workers`. This is what the `htm-reader` pass used, alongside dropping the import entirely where nothing read the value.
-- **Declare `"sideEffects": false` on core.** One line, fixes every consumer including future ones, and is an assertion that has to be earned: if any core module registers something by being imported, claiming purity lets a bundler drop it and the failure is a missing registration at runtime rather than a build error. Verifying it means auditing core's module-scope statements, which is worth doing anyway.
+| Worker | Before | After |
+|---|---|---|
+| `api-reader` restapi | 478.6 kB | 36.7 kB |
+| `csv-reader` csv | 571–586 kB | 165.9 kB |
+| `edf-reader` edf | 571–586 kB | 180.5 kB |
+| `natus-reader` natus | 571–586 kB | 176.2 kB |
+| `nic-reader` nic | 571–586 kB | 181.9 kB |
+| `wav-reader` wav | 571–586 kB | 174.0 kB |
+| `dicom-reader` dicom | — | 1223.0 kB |
 
-Neither is a reason to reach for the barrel less carefully in the meantime. A worker importing `SETTINGS` to hold a value nothing in it reads is the case to look for first — that was `htm-reader`'s, where the settings were passed to a processor, stored, and never consulted.
+`dicom-reader` is dominated by its own dependencies rather than by core. `htm-reader`, which had already dropped the barrel import during its audit, fell further still — 47 kB to 12.0 and 179 kB to 135.8 — because the declaration also lets a bundler drop from the subpath graphs.
+
+**The subpath route is no longer worth taking for size.** Measured on `natus-reader`'s worker on 2026-10-02, moving `SETTINGS` to `@epicurrents/core/config` and `GenericSignalReader` to `@epicurrents/core/assets` changed the bundle by six bytes. A subpath import is still the clearer statement of what a module depends on, and a worker holding a value nothing in it reads is still worth removing, but neither is a bundle-size argument now.
 
 
 Imported files leak a blob URL each
@@ -314,16 +321,16 @@ The three revocation sites that do exist are all in export paths, where the URL 
 Fixing it means giving that lifetime an owner in core — most naturally the study context, revoking on destroy — rather than patching the readers, since a reader does not know when the study is done. Worth noting that some readers prefer the `File` over the URL when both are present, so for those the URL is created, never read and never freed.
 
 
-The declared core range is a major version behind in eight packages
+The declared core range is a major version behind in seven packages
 -------------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Eight of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Seven of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `natus-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1.
 
-**Until a nested copy exists, at which point the range stops being invisible and starts breaking the workspace.** Observed 2026-10-02: all eight carried their own `node_modules/@epicurrents/core` at 1.0.3, and a build of the family failed in exactly those eight — `natus-reader`, `nic-reader` and `wav-reader` outright, on exports core 1.x does not have, and the other five in `build:types` on `Cannot find module '@epicurrents/core/types'`, a subpath 1.x does not export. The interface had one too, and its 1.0.3 against the checkout's 2.0.0 gave every resource type two identities, which is what a dozen `not assignable to` errors in unrelated Vue components turned out to be. Deleting the eight nested directories fixed all of it with the ranges left at `^1.0.0`, which is the proof that the range is not what any of it was about. So the order matters: a nested copy is the thing to look for first, and bumping a range in response to these symptoms treats a cause that is not operating.
+**Until a nested copy exists, at which point the range stops being invisible and starts breaking the workspace.** Observed 2026-10-02, when eight still named `^1.0.0`: all eight carried their own `node_modules/@epicurrents/core` at 1.0.3, and a build of the family failed in exactly those eight — `natus-reader`, `nic-reader` and `wav-reader` outright, on exports core 1.x does not have, and the other five in `build:types` on `Cannot find module '@epicurrents/core/types'`, a subpath 1.x does not export. The interface had one too, and its 1.0.3 against the checkout's 2.0.0 gave every resource type two identities, which is what a dozen `not assignable to` errors in unrelated Vue components turned out to be. Deleting the eight nested directories fixed all of it with the ranges left at `^1.0.0`, which is the proof that the range is not what any of it was about. So the order matters: a nested copy is the thing to look for first, and bumping a range in response to these symptoms treats a cause that is not operating.
 
 What puts a copy there is a root `npm install`, which resolves each member's declared range from the registry rather than linking the sibling; it is worth avoiding in this workspace for that reason alone.
 
@@ -335,25 +342,25 @@ The other three packages that carry no lockfile at all — `acc-module`, `edf-re
 
 Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the three that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader` and `dicom-reader` extend the class, so for those three the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module` and `emg-module` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
+The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the four that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader` and `natus-reader` extend the class, so for those four the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module` and `htm-reader` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
 
 
-Eight packages have a lint script that cannot run
--------------------------------------------------
+Six packages have a lint script that cannot run
+-----------------------------------------------
 
 🟠 **Priority: amber** — the failure reads as a configuration problem rather than a missing or absent file, so it survives being looked at.
 
-Ten of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other seven have a `lint` script and nothing ESLint 9 will read, in three shapes:
+Eleven of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The other six have a `lint` script and nothing ESLint 9 will read, in three shapes:
 
 | Shape | Packages | What is there |
 |---|---|---|
 | Misnamed | `ncs-module` | `.eslint.config.mjs` — the right content under a leading dot, so the file is never looked for |
 | Wrong format | `onnx-service`, `pyodide-service`, `tab-module`, `wav-reader` | `.eslintrc.cjs`, the ESLint 8 format |
-| Absent | `natus-reader`, `nic-reader` | No configuration file at all; `natus-reader` declares no `eslint` dependency either, and `nic-reader` pins ESLint 8 |
+| Absent | `nic-reader` | No configuration file at all, and ESLint 8 pinned in `devDependencies` |
 
-None of the three reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc, actively misleading for `ncs-module` — whose configuration is already flat and merely misnamed — and beside the point for the two that have none.
+None of the three reports itself usefully. ESLint 9 exits pointing at the flat-config migration guide, which is the correct advice for the four on an eslintrc, actively misleading for `ncs-module` — whose configuration is already flat and merely misnamed — and beside the point for the one that has none.
 
-`emg-module` had the identical misnaming and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename.
+`emg-module` had the identical misnaming and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten, where core reports 613.
 
 What makes this a family-level item rather than eight package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
 
