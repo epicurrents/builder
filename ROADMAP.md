@@ -186,7 +186,7 @@ The workspace test sweep cannot be green
 
 🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
 
-`npm run test` runs `npm run test --workspaces --if-present`, and five of the nineteen workspaces — `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+`npm run test` runs `npm run test --workspaces --if-present`, and five of the twenty-two workspaces — `ncs-module`, `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
 
 The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
 
@@ -218,11 +218,27 @@ Nothing catches it in `csv-reader` today: its `tsconfig.json` carries `include: 
 
 ### The pass
 
-Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (nine of nineteen workspaces have any tests today).
+Do it across the family in one go rather than per package, since the pattern spreads with every package that gains a suite (seventeen of twenty-two workspaces have tests today).
 
 1. **Decide whether core needs doubling at all.** Neither package documents why; if the reason is import weight or worker construction rather than behaviour, importing the real classes and stubbing only the boundary is both simpler and self-maintaining.
 2. **Where a double stays, typecheck the tests against real core.** `eeg-module`'s [tsconfig.test.json](epicurrents/eeg-module/tsconfig.test.json) is the worked example, wired into `npm test` as a `test:types` step ahead of the unit run. Having each mock class satisfy the core interface it replaces is the stronger form and would catch a wrongly-defaulted field too, but it costs a complete stand-in for core's type surface; the weaker form catches the assertions that verify nothing, which is the failure that had already happened.
 3. **Watch what the no-op stubs cost.** A stub that swallows a registration makes the behaviour behind it un-exercisable — `eeg-module`'s `onPropertyChange` stubs mean nothing can fire the `isReady` → `signalCacheStatus` reset that `6f4282d` added, so that fix now has no test and would fail silently.
+
+
+Three defects behind the scoped-event-bus suite
+-----------------------------------------------
+
+🟡 **Priority: yellow** — all three are in the library, and all three were found by making its suite assert.
+
+The suite deferred almost every assertion into a bare `setTimeout` callback. Nothing awaited the timer, so each test function returned and the runner recorded a pass before the callback ran; the assertions were reached, if at all, while some later test was running. `dispatchScopedEvent` is synchronous, so there was never anything to wait for. Rewriting the suite to assert in the test body took it from 13 cases at 43% statement coverage to 34 at 85%, and five of the original expectations turned out to be wrong about the library rather than about the timing: a `Map` iterator compared to an array, a scope-keyed map read by event name, a `removeEventListener` call with no options object (which reaches `EventTarget` and cannot touch the scoped-subscriber registry it was asserted to shrink), and two dispatches that omitted the scope and so could reach neither a scoped subscriber nor a pattern. A scan of the family found no other suite with that shape.
+
+Three defects it uncovered, none fixed:
+
+- **`removeAllScopedEventListeners` empties the wrong map.** The pattern branch ends with `this._subscribers.delete(scope)` where it means `this._patterns.delete(scope)`, so removing a subscriber's last pattern listener leaves an empty array in `_patterns` and deletes whatever event key happens to share the scope's name. The scoped-listener branch above it deletes from the right map, which is what makes the line read as correct.
+- **A pattern listener registered without a scope is discarded in silence.** `addScopedEventListener` stores a `RegExp` only under `else if (scope)`, and the call still returns an unsubscribe function, so a caller that forgets the scope gets every sign of having subscribed and no events.
+- **A scoped dispatch reaches the debug callback twice.** `dispatchScopedEvent` relays the event and then calls `dispatchEvent`, which relays again. The second payload is `{ ...event, detail: { phase: 'after' } }`, and spreading an `Event` copies no own properties, so what the debug listener receives names neither the event nor its scope. The suite pins the current behaviour rather than endorsing it.
+
+All three belong in the package's own roadmap once the alphabetical sweep reaches `util/`.
 
 
 Settle one Vite version across the family
