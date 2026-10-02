@@ -26,13 +26,13 @@ Worth folding into each package as the audit sweep opens it, rather than as a ni
 
 
 Non-public packages fall out of the maintenance scripts
-------------------------------------------------------
+-------------------------------------------------------
 
 🟠 **Priority: amber** — two defects in the same mechanism, both silent.
 
-`clean.mjs` resolves what to operate on through `resolveSelection`, the same profile-aware helper the build uses, and that helper drops non-public packages unless `--include-private` is given. So `npm run clean` cleans every public package and silently leaves the nested `@epicurrents/core` copies inside `api-reader`, `nic-reader` and `natus-reader`.
+`clean.mjs` resolves what to operate on through `resolveSelection`, the same profile-aware helper the build uses, and that helper drops non-public packages unless `--include-private` is given. So `npm run clean` cleans every public package and silently leaves the nested `@epicurrents/core` copies inside `api-reader`, `nic-reader`, `natus-reader` and `onnx-models`.
 
-That matters because cleaning is the documented remedy for a whole class of failure — [AGENTS.md](AGENTS.md) states that a package reporting missing core methods almost always has a stale nested copy, and says to run `clean`. A maintainer with the private packages checked out runs it, watches the type-check still fail on exactly those three, and has no reason to suspect the remedy skipped them. Either the default should include private packages (cleaning is maintenance, not distribution, so the public/private split buys nothing here), or the script should report what it skipped.
+That matters because cleaning is the documented remedy for a whole class of failure — [AGENTS.md](AGENTS.md) states that a package reporting missing core methods almost always has a stale nested copy, and says to run `clean`. A maintainer with the private packages checked out runs it, watches the type-check still fail on exactly those four, and has no reason to suspect the remedy skipped them. Either the default should include private packages (cleaning is maintenance, not distribution, so the public/private split buys nothing here), or the script should report what it skipped.
 
 The second defect is in the registry data the same split reads, and it is three sources disagreeing about `acc-module` and `csv-reader`. `scripts/env.mjs` marks both public. `setup/registry.ts` names both as examples of non-public packages a registrar composes, and `profiles/full.mjs` — "every modality the builder can register, from public packages only" — excludes acc accordingly.
 
@@ -59,14 +59,13 @@ The reason to run the npm mode continuously in CI is not parity — it is that r
 
 - **Duplicate core copies.** Every package declares `@epicurrents/core` as a regular `dependency` with a `^` range, and no package declares peer dependencies. Today the ranges agree so npm would install one copy; the moment one diverges, npm installs two and nests one — which is the worker/main-thread data-layout corruption the version-compliance rule exists to prevent. Dev mode *cannot* reach this state, because `clean.mjs` deletes nested copies as a matter of course. Moving `@epicurrents/core` and the three shared utilities to `peerDependencies`, plus an assertion that `npm ls @epicurrents/core` resolves to exactly one version, is the prerequisite that matters most.
 - **Phantom dependencies.** Workspace hoisting puts everything in one root `node_modules`, so a package can resolve an import it never declared. A real install gives it only what it declares. The traffic runs both ways: `edf-reader` declared `stream-browserify` as a runtime dependency that nothing in it imported, which every consumer would have installed — dropped in its audit, and worth looking for in the packages the sweep has not reached.
-- **Publish coverage.** Only what `files` and `exports` cover reaches the tarball. Core's coverage is already good — `dist/*`, `umd/*.js` and `tsconfig.base.json` all ship — but only the root export carries a `types` condition. Subpaths are bare strings, so `import { inlineWorker } from '@epicurrents/core/util'`, which is what `setup/workers/core.ts` does, gets no types from an installed package. `pdf-reader`'s `files` also has `"umd/*js"`, missing the dot.
+- **Publish coverage.** Only what `files` and `exports` cover reaches the tarball. Core's coverage is already good — `dist/*`, `umd/*.js` and `tsconfig.base.json` all ship — but only the root export carries a `types` condition. Subpaths are bare strings, so `import { inlineWorker } from '@epicurrents/core/util'`, which is what `setup/workers/core.ts` does, gets no types from an installed package. A missing dot in `pdf-reader`'s `"umd/*js"` was the same class of defect one package down, and its audit corrected it.
 
 ### Prerequisites
 
 1. `peerDependencies` for `@epicurrents/core`, `asymmetric-io-mutex`, `scoped-event-bus`, `scoped-event-log` in every package.
 2. `types` conditions on the subpath exports, not just the root.
-3. Fix the `pdf-reader` `files` glob.
-4. Decide whether the three utilities are republished under the `@epicurrents` scope. They are currently unscoped and come from a personal account, so publishing scoped packages that depend on them ties the org's release integrity to a personal namespace — and it is a one-way door once versions are out.
+3. Decide whether the three utilities are republished under the `@epicurrents` scope. They are currently unscoped and come from a personal account, so publishing scoped packages that depend on them ties the org's release integrity to a personal namespace — and it is a one-way door once versions are out.
 
 ### What this does to the manifest
 
@@ -183,11 +182,11 @@ Tests and CI
 
 
 The workspace test sweep cannot be green
------------------------------------------
+----------------------------------------
 
 🟡 **Priority: yellow** — the command that reports the family's health reports failure whatever the family does.
 
-`npm run test` runs `npm run test --workspaces --if-present`, and four of the twenty-two workspaces — `onnx-service`, `pdf-reader`, `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
+`npm run test` runs `npm run test --workspaces --if-present`, and two of the twenty-two workspaces — `pyodide-service` and `wav-reader` — have a `test` script and no test files. Vitest exits 1 on "No test files found", so each one fails the sweep. `--if-present` does not help: the script is present, it just has nothing to run.
 
 The effect is that the sweep's exit code carries no information, and a real failure has to be read out of the scrollback rather than out of the result. Every failure in the sweep today is of this kind, which is the part worth knowing: there are no failing assertions anywhere in the family.
 
@@ -195,7 +194,7 @@ Two ways out, and they say different things. `passWithNoTests` in each empty pac
 
 
 Two signal readers' worker substitutes answer a subset of the commission vocabulary
-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
 
 🟠 **Priority: amber** — the failure is a study that cannot be closed, on the no-SharedArrayBuffer path, and one of the two packages has no tests at all.
 
@@ -286,16 +285,20 @@ worker = getOverrideWorker ? getOverrideWorker()
 
 Published untransformed, that construct reaches the consumer unresolved and whichever bundler runs last decides what it means. They do not agree. Rollup rewrites it to an emitted chunk; Rolldown — which Vite 8 uses — substitutes `{}` for `import.meta`, and whether the result works then depends on whether it resolved the specifier first. When it does, the argument is an absolute `data:` URL and the empty base is harmless. When it does not, the argument stays relative and `new URL('../workers/edf.worker', undefined)` throws `Invalid URL`. That is the state core's two workers shipped in, and the `EMPTY_IMPORT_META` warning that flags it scrolls past in a successful build.
 
-Every package now builds with Vite and imports its worker through `?worker&inline`, so `dist/` carries it bundled and constructs it from a Blob, with the standalone `umd/` bundle kept as the escape hatch for a consumer whose content security policy forbids `blob:` workers. Three depart from that shape for a reason: `onnx-service` keeps its worker a separate file, because the ONNX runtime fetches its WebAssembly at run time from a host-supplied path and inlining would bake 24 MB of base64 into the bundle; `pdf-reader` publishes pdf.js's own worker, which pdf.js takes as a URL rather than constructing; and `pyodide-service` builds its worker as an ES module, because it loads the Pyodide runtime through a dynamic import only a module worker can perform. Check the family for a relapse with `grep -rn "import.meta.url" epicurrents/*/dist/`.
+Every package now builds with Vite and imports its worker through `?worker&inline`, so `dist/` carries it bundled and constructs it from a Blob, with the standalone `umd/` bundle kept as the escape hatch for a consumer whose content security policy forbids `blob:` workers. Two depart from that shape for a reason: `onnx-service` keeps its two workers separate files, because the ONNX runtime fetches its WebAssembly at run time from a host-supplied path and inlining would bake 24 MB of base64 into each bundle; and `pdf-reader` publishes pdf.js's own worker, which pdf.js takes as a URL rather than constructing. `pyodide-service` inlines like the readers do but constructs its worker as an ES module, because it loads the Pyodide runtime through a dynamic import only a module worker can perform — a difference in the worker's type, not in how it is carried. Check the family for a relapse with `grep -rn "import.meta.url" epicurrents/*/dist/`.
 
 Two things belong to the builder rather than the packages:
 
 - **Fail the edition build on `EMPTY_IMPORT_META`** rather than warning, so a package reintroducing the pattern cannot reach a release.
 - **Drop each package's worker registrar from `setup/workers/`.** Registering a factory that duplicates the package's own inlined worker ships the same bundle twice — core's entry and the `eeg-montage` override are already gone for that reason.
 
+The list that decides which worker bundles are copied names mostly packages that do not need it. `workerPackages` in [scripts/env.mjs](scripts/env.mjs) now names twelve, and ten of them inline their workers and so have no bundle to copy; only `pdf-reader` and `onnx-models` do. `onnx-models` was added when it was split out, because it is the package a consumer actually registers a model service from and it does not inline its worker. `onnx-service` is deliberately absent: it ships a worker of its own, but a model package supplies its own factory, so the generic worker is reached only by a direct subclass of `GenericOnnxService` and nothing has one.
+
+Nothing fails today, since no registrar registers any of this. The hazard is the list being maintained by hand beside a registry that already knows which packages exist, with no check that it agrees with which of them emit a `umd/` bundle. Deriving it from that would remove the question.
+
 
 A worker importing the core barrel no longer carries 460 kB of it
-----------------------------------------------------------------
+-----------------------------------------------------------------
 
 ✅ **Closed 2026-10-02** — core declares `"sideEffects": false`, which is the second of the two routes below and the one that fixes every consumer at once.
 
@@ -340,12 +343,34 @@ The three revocation sites that do exist are all in export paths, where the URL 
 Fixing it means giving that lifetime an owner in core — most naturally the study context, revoking on destroy — rather than patching the readers, since a reader does not know when the study is done. Worth noting that some readers prefer the `File` over the URL when both are present, so for those the URL is created, never read and never freed.
 
 
-The declared core range is a major version behind in six packages
------------------------------------------------------------------
+A service backed by a worker substitute cannot be shut down
+-----------------------------------------------------------
+
+🟠 **Priority: amber** — reachable today for every format served by a substitute, and silent: nothing errors, the teardown simply does not happen.
+
+`GenericService.shutdown` commissions `shutdown` and terminates its worker only `if (await response.promise)`, and the commission resolves with the reply's `success`. `ServiceWorkerSubstitute.postMessage` answers an action it does not implement with a failure, so a substitute that implements no `shutdown` case resolves it `false`: the worker is never terminated, the commissions and waiters are never cleared, `isWorkerSetup` stays true and `isReady` never changes. Whatever the substitute holds — a parsed document, a decoded recording — is held for the life of the page.
+
+Measured 2026-10-02: of the fifteen substitutes in the family, two answer the action. `pdf-reader`'s was added in its audit; `edf-reader`'s was already there and has a defect of its own, which is the second half of this item. It calls `super.shutdown()` before `returnSuccess`, and the base method clears the listener list and `onmessage` both, so the reply it then sends reaches nobody and the service's `shutdown()` promise never settles at all. Demonstrated directly against core's base class: a reply sent after `shutdown()` is received by no listener. The order is the whole fix — answer, then clear.
+
+The right place for the rest is core rather than thirteen packages: the base class already special-cases `update-settings` for exactly this reason, noting that the substitutes implementing no case of their own would each answer it with a failure and a warning. `shutdown` wants the same treatment, with the base clearing its own listeners after replying, and a substitute holding a resource overriding it to release that first. Do it in core's own pass, and check the thirteen afterwards — a substitute that releases nothing needs no case once the base answers.
+
+Nothing type-checks the builder's own setup directory
+-----------------------------------------------------
+
+🔵 **Priority: blue** — no symptom today; the files are small, and Vite resolves at build time what TypeScript never reads.
+
+[setup/](setup/) is the builder's own source — the registrars, the worker factories, the edition entry — and no type-check program includes it. [scripts/typecheck.mjs](scripts/typecheck.mjs) walks the cloned packages; the interface's `tsconfig.json` includes `./src/**/*` only, and nothing under its `src/` imports `#workspace/setup/`; [vite.config.lib.ts](vite.config.lib.ts) takes [setup/index.ts](setup/index.ts) as a build entry, and a Vite build does not type-check. So the one directory this repository actually owns is the one nothing vets.
+
+It surfaced while auditing `pdf-reader`, which carried an ambient `declare module '*?raw'` its own sources never used. Seven files under [setup/workers/](setup/workers/) import a worker bundle with `?raw`, so the declaration looked load-bearing for them — and is not, because those files are never in a program that would need it. Only `pyodide-service` still publishes such a declaration, and it would be the accidental supplier if anything ever did type-check `setup/`.
+
+A `tsconfig.json` at the builder root including [setup/](setup/) and [profiles/](profiles/), with `vite/client` in `types` for the `?raw` and `?worker` suffixes, is the whole of it — plus a `typecheck:setup` script, so the gap cannot reopen quietly.
+
+The declared core range is a major version behind in three packages
+-------------------------------------------------------------------
 
 🟠 **Priority: amber** — invisible in the workspace, and only the workspace is ever tested.
 
-Core is at 2.0.0. Five of the seventeen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies`; only `acc-module`, `api-reader`, `csv-reader`, `dicom-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `natus-reader`, `ncs-module` and `nic-reader` — the ones the current audit sweep has opened — name `^2.0.0`.
+Core is at 2.0.0. Three of the eighteen dependent packages still ask for `@epicurrents/core: ^1.0.0`, in both `devDependencies` and `peerDependencies` — `pyodide-service`, `tab-module` and `wav-reader`, which are also the three the sweep has left. The other fifteen name `^2.0.0`: the thirteen the sweep has opened, plus `onnx-service` and `onnx-models`, which it opened and split.
 
 Nothing fails, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against 2.0.0 while the manifest asks for 1.
 
@@ -353,38 +378,42 @@ Nothing fails, because nothing resolves through the range. The workspace symlink
 
 What puts a copy there is a root `npm install`, which resolves each member's declared range from the registry rather than linking the sibling; it is worth avoiding in this workspace for that reason alone.
 
-**The per-package lockfiles are the same problem one layer down, and they outrank the range.** Six packages commit a `package-lock.json`, and five pin a core that predates 1.0 — `0.3.0-2` in `eeg-module`, `emg-module`, `pdf-reader` and `pyodide-service`, `0.2.0-1` in `onnx-service` — resolved from the registry rather than linked. `setup` installs each package with `npm i` against its own lockfile, so a fresh clone gets that version whatever the range says, and the two packages whose audits already corrected the range to `^2.0.0` have it undone by their own lock. `htm-reader`'s was regenerated during its pass and is the only one that agrees with its manifest.
+**The per-package lockfiles are the same problem one layer down, and they outrank the range.** Six packages commit a `package-lock.json`, and four still pin a core that predates 1.0 — `0.3.0-2` in `eeg-module`, `emg-module` and `pyodide-service`, `0.2.0-1` in `onnx-service` — resolved from the registry rather than linked. `setup` installs each package with `npm i` against its own lockfile, so a fresh clone gets that version whatever the range says, and the packages whose audits corrected the range to `^2.0.0` have it undone by their own lock. `htm-reader`'s and `pdf-reader`'s were regenerated during their passes and are the only two that agree with their manifests; `onnx-service`'s was not, so its range and its lock disagree today.
 
 Regenerating a lock has to happen outside the workspace to work at all: the packages are workspace members, so `npm install --package-lock-only` run inside one walks up to the root and leaves the package's own lock untouched, reporting success. Copying the manifest to a scratch directory and generating there is what produces a lock that describes the standalone install `setup` actually performs.
 
 The other three packages that carry no lockfile at all — `acc-module`, `edf-reader` and the rest — are a separate question this does not settle: whether a package published to a registry and also built inside a workspace should commit one. Whichever way it goes, the six should agree. The range only becomes load-bearing for a consumer installing the packages from the registry, which is the one configuration never exercised here. That makes it the same shape as the version-compliance hazard in [AGENTS.md](AGENTS.md): a mismatch that type-checks locally and can only be observed by whoever installs the published artifact.
 
-Fold the bump into each package as the sweep opens it, rather than as a seventeen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
+Fold the bump into each package as the sweep opens it, rather than as an eighteen-package commit, so the range moves together with the code that was actually verified against the new core. What the sweep must not do is bump a range to a core version that is not yet published — core holds its release until the sweep finishes, so a package published in the meantime would name a version the registry does not have.
 
-The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the five that use the new surface need revisiting at release — `api-reader` calls the method, and `csv-reader`, `dicom-reader`, `natus-reader` and `nic-reader` extend the class, so for those five the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, and `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission.
+The target is `^2.1.0` for any package that touches either, not `^2.0.0`. Core's next release is a minor because repairing the settings relay added `AppSettings.applySnapshot` and closing the worker-substitute vocabulary gap added `SignalReaderWorkerSubstitute`, both of them published surface, so `^2.0.0` admits a core with neither. Every package bumped so far names `^2.0.0` and the six that use the new surface need revisiting at release — `api-reader` and `onnx-service` call the method, and `csv-reader`, `dicom-reader`, `natus-reader` and `nic-reader` extend the class, so for those six the range is not merely untidy but wrong, and it stays wrong until there is a 2.1.0 to name. `acc-module`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `ncs-module`, `onnx-models` and `pdf-reader` use neither, so `^2.0.0` states what they were verified against: `edf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and its worker applies the settings snapshot with `Object.assign` rather than through the new method, `eeg-module` has no worker of its own and snapshots the app settings into its own `setup-worker` commission, `onnx-models` reaches neither surface in its own code — its worker extends one from `@epicurrents/onnx-service`, so whatever core version that package needs is carried by the range it declares rather than by this one — and `pdf-reader`'s substitute extends `ServiceWorkerSubstitute` directly and lets the base class answer the settings snapshot, so it calls the new method nowhere.
 
 
-Four packages have a lint script that cannot run
-------------------------------------------------
+Three packages have a lint script that cannot run
+-------------------------------------------------
 
 🟠 **Priority: amber** — the failure reads as a configuration problem rather than a missing or absent file, so it survives being looked at.
 
-Thirteen of the seventeen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The remaining four — `onnx-service`, `pyodide-service`, `tab-module` and `wav-reader` — have a `lint` script and an `.eslintrc.cjs`, the ESLint 8 format, which ESLint 9 will not read. It exits pointing at the flat-config migration guide, which for these four is the correct advice.
+Fifteen of the eighteen dependent packages carry a flat `eslint.config.mjs` that ESLint 9 loads. The remaining three — `pyodide-service`, `tab-module` and `wav-reader` — have a `lint` script and an `.eslintrc.cjs`, the ESLint 8 format, which ESLint 9 will not read. It exits pointing at the flat-config migration guide, which for these three is the correct advice.
 
 `nic-reader` was the one package with no configuration file at all, and it failed in a third way worth recording because the message names nothing relevant. It pinned ESLint 8, under which `eslint src` lints `.js` by default, so the run exited 2 with *"No files matching the pattern src were found. Please check for typing mistakes in the pattern."* — a complaint about the argument, from a tool that had found no config and would not have read one. A package reporting that is not misconfigured in its script; it has never linted a line.
 
-`emg-module` and `ncs-module` each had the configuration under a leading dot, where ESLint never looks for it, and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies; `nic-reader` had no configuration and a pinned ESLint 8 whose packages shadowed the hoisted 9, so the stale `eslint`, `@eslint` and `@typescript-eslint` directories under its own `node_modules` had to go before the config could be read. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten, `nic-reader` thirteen and `ncs-module` twenty-two, where core reports 613. Size predicts it better than age does — all three of those are small packages.
+`emg-module` and `ncs-module` each had the configuration under a leading dot, where ESLint never looks for it, and the fix was the rename plus the two `@stylistic` plugins the family rule set references; `htm-reader` was one of the eslintrc five and needed the same plugins plus `typescript-eslint` and `@eslint/js`. `natus-reader` had neither a configuration nor the `eslint` dependency its `lint` script called, and needed the config plus five devDependencies; `nic-reader` had no configuration and a pinned ESLint 8 whose packages shadowed the hoisted 9, so the stale `eslint`, `@eslint` and `@typescript-eslint` directories under its own `node_modules` had to go before the config could be read. `onnx-service` was the two failures at once — an `.eslintrc.cjs` ESLint 9 will not read *and* a local ESLint 8 shadowing the hoisted 9 — so moving the stale directories aside was what made the exit code change at all, from a complaint about the pattern to a report of findings. `pdf-reader` is the fourth shape, and the one that looks healthiest from outside: a flat config ESLint 9 loads, carrying a single hand-written `quotes` rule above the recommended set it then spread, so the run reported eight errors of which five were template literals the family rule set allows as house style. A package whose lint exits non-zero on its own convention is one nobody runs, and the two findings underneath — an empty interface and two `async` methods with no `await` — were what the noise was hiding. Expect the first successful run in a package to report in the tens or hundreds, because the rule set is core's and nothing has ever been linted against it; budget the triage separately from the rename. The spread so far is wide and worth knowing before planning one: `natus-reader` reported ten, `nic-reader` thirteen, `onnx-service` fourteen and `ncs-module` twenty-two, where core reports 613. Size predicts it better than age does — all three of those are small packages.
 
 What makes this a family-level item rather than five package-level ones is that `npm run lint --workspaces` cannot distinguish a package with no findings from one whose configuration was never read. Both are silent, and the silence is the same.
 
 
 Package manifests carry leftovers from the webpack era
--------------------------------------------------------
+------------------------------------------------------
 
 🔵 **Priority: blue** — no symptom; the value is that the next reader is not misled.
 
-Five packages ship a `.env.example`, four of them declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. The fifth, `pdf-reader`, declares `MODULE_PATH` instead, with an absolute Windows path as the example value.
+Thirteen packages committed a `.env.example`, and four still do: `core`, `pyodide-service`, `tab-module` and `wav-reader`, each declaring `ASSET_PATH=` and `ROOT_PATH=`. Those names appear nowhere else in the repository — no build config, no script and no source reads either, and the Vite migration removed whatever did. `pdf-reader`'s declared `MODULE_PATH` instead, with an absolute Windows path as the example value, and that name was read in no file either.
 
-A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. `api-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader` and `ncs-module` dropped their copies during their audits; `ncs-module` was the one still carrying a `dotenv` devDependency for them, and that went with it. The rest should go the same way.
+A committed example file is an instruction: it tells a new contributor these variables have to be set, and none of them do. The nine that have gone — `api-reader`, `doc-module`, `edf-reader`, `eeg-module`, `emg-module`, `htm-reader`, `ncs-module`, `onnx-service` and `pdf-reader` — went with their audits; `ncs-module` was the one still carrying a `dotenv` devDependency for them, and that went with it. The remaining four should go the same way.
+
+A smaller one of the same kind: every package's `vitest.config.ts` starts straight at its import, with no module docstring and none of the `@package` / `@copyright` / `@license` header that [AGENTS.md](AGENTS.md) asks of every TypeScript file. Measured 2026-10-02 across all eighteen, it is uniform, and the sibling `.mjs` build configs all carry one — so either the rule means package source rather than build configuration, or eighteen files are missing a header. Worth settling in one pass rather than in whichever package is open; changing one of the eighteen makes it the odd one out.
+
+A stray directory worth knowing about before counting anything under `epicurrents/`: there is an `epicurrents/interface/` holding four type files and no manifest, while the real interface is the sibling `interface/` that the workspace and the registry both point at. Nothing references the stray copy, and being inside a git-ignored directory it is tracked by nothing, so it costs only confusion — but two of its four files are named in this document's own account of where the `__EPICURRENTS__` declarations live, so a grep looking for them finds a copy that is not the one being described.
 
 The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.

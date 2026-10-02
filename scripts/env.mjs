@@ -90,6 +90,10 @@ export const packages = new Map([
             { name: 'natus-reader', public: false },
             {
                 name: 'pdf-reader',
+                // The worker bundle the package emits is pdf.js's own, built from the pdfjs-dist
+                // installed beside it, while the main-thread half resolves to the root copy. pdf.js
+                // compares the two versions when a document loads and throws when they differ, so
+                // this copy is what keeps the bundle and the library the same release.
                 prebuild: [
                     'node scripts/copy.mjs --from node_modules/pdfjs-dist --to node_modules/@epicurrents/pdf-reader/node_modules/pdfjs-dist',
                     //'xcopy node_modules\\pdfjs-dist node_modules\\@epicurrents\\pdf-reader\\node_modules\\pdfjs-dist /s /i', // Windows
@@ -100,6 +104,9 @@ export const packages = new Map([
             // Services.
             { name: 'onnx-service' },
             { name: 'pyodide-service' },
+            // Model integrations. Not published: each model is narrow enough that offering it from a
+            // public package would advertise a capability it cannot generally deliver.
+            { name: 'onnx-models', public: false },
         ],
         repository: 'https://github.com/epicurrents',
     }],
@@ -142,6 +149,7 @@ const workerPackages = [
     'htm-reader',
     'natus-reader',
     'nic-reader',
+    'onnx-models',
     'pdf-reader',
     'wav-reader',
     'pyodide-service',
