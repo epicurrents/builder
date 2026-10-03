@@ -168,6 +168,8 @@ Every package declares `@epicurrents/core` and the shared utility packages as de
 
 `npm run clean` deletes the nested `@epicurrents`, `asymmetric-io-mutex`, `scoped-event-bus`, and `scoped-event-log` copies from each package so that every package resolves the single workspace-level version. `setup` performs the same deletions itself, per package, between installing and building it — so a fresh setup needs no separate clean. **Run `npm run clean` any time you install or remove packages inside a package checkout afterwards.**
 
+Releasing one of the shared packages needs the same clean, and a correction before it. Raising a shared package's version leaves every consumer declaring a range that no longer admits it, and below version 1.0 a minor release is enough to do that, because `^0.3.0` stops at `0.4.0`. The next install then nests a registry copy of the superseded version in each consumer, which is the state the clean exists to undo — so bump the consumers' ranges first, or the copies return with the install that follows.
+
 See [AGENTS.md](AGENTS.md) for the full rationale behind the version-compliance rules.
 
 ## Type-checking after shared-code changes

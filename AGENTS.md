@@ -62,11 +62,20 @@ Every package declares `@epicurrents/core` and the shared utilities as dependenc
 
 If a package suddenly reports `TS2339` for methods that exist on a core base class, the cause is almost always a stale nested `@epicurrents/core` shadowing the workspace symlink — run `node scripts/clean.mjs`.
 
-**A root `npm install` recreates them, so treat one as a step that has to be followed by a clean.** Installing at the root is not neutral: a package whose declared core range does not admit the version checked out under `epicurrents/core` gets a registry copy installed inside its own `node_modules`, and the root lockfile is git-ignored, so nothing records that this has happened. While any package still pins an older major than core carries, a plain `npm install` is enough to break the workspace.
+**A root `npm install` recreates them, so treat one as a step that has to be followed by a clean.** Installing at the root is not neutral: a package whose declared range does not admit the version checked out in the workspace gets a registry copy installed inside its own `node_modules`, and the root lockfile is git-ignored, so nothing records that this has happened. While any package still declares a range the workspace cannot satisfy, a plain `npm install` is enough to break the workspace.
+
+**The range that does this is any workspace dependency's, not only core's.** Releasing a util package is the case to watch, because one bump makes every consumer's range stale at once, and for a package below 1.0 it does so on a *minor*: `^0.3.0` means `>=0.3.0 <0.4.0`, so publishing `0.4.0` leaves every `^0.3.0` consumer unsatisfiable and the next install nests a registry copy of the old version in each. The fix is the same clean, but the range has to be corrected first or the copies come straight back.
 
 The symptom is not the `TS2339` above but `TS2307`, and it names the copy it found: *Cannot find module `@epicurrents/core/types` … There are types at `epicurrents/<pkg>/node_modules/@epicurrents/core/dist/types/index.d.ts`, but this result could not be resolved under your current `moduleResolution` setting.* A `moduleResolution` suggestion in a package that has never had a resolution problem is the tell; the fix is the clean, not the setting.
 
-**`npm run clean` honours the public/non-public split, so on a maintainer's full tree it is not enough on its own.** With no scope it cleans only the packages a default setup would install, leaving the nested copies of every `public: false` package in place and the typecheck still failing for them. Pass `--include-private` to reach those, and check with `ls -d epicurrents/*/node_modules/@epicurrents` that none is left.
+**`npm run clean` honours the public/non-public split, so on a maintainer's full tree it is not enough on its own.** With no scope it cleans only the packages a default setup would install, leaving the nested copies of every `public: false` package in place and the typecheck still failing for them. Pass `--include-private` to reach those, and check that none is left — for the utilities as well as core, and under [interface/](interface/) as well as the packages. A `ls` over a brace expansion is the wrong tool here: zsh aborts the whole command on the first pattern that matches nothing, which is the usual case, so it reports a glob failure rather than a clean tree. `find` prints nothing and exits zero instead, and `-type d` passes over the root symlinks, which are what the packages are supposed to resolve through:
+
+```sh
+find epicurrents interface -type d \
+    \( -path "*/node_modules/@epicurrents" \
+    -o -path "*/node_modules/scoped-event-*" \
+    -o -path "*/node_modules/asymmetric-io-mutex" \)
+```
 
 ---
 

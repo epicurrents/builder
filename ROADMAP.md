@@ -561,3 +561,27 @@ The two older util suites depend on the order they run in
 The two causes are different and both are structural. The mutex suite threads a module-level `BUFFER_POS` cursor through its `TestMutex` constructor, so each case carves the next region out of one shared two-kilobyte buffer and a case that runs early gets a different region than it asserts against. The log suite asserts on static state earlier cases change -- `Default print threshold is INFO` holds only while nothing has set it, and the event list and listener registry are global to the class with no per-case reset.
 
 Neither is a one-line fix: the first wants a buffer per case, which is a rewrite of the helper every case uses, and the second wants a reset in `beforeEach`, which several assertions are written against the absence of. The cost of leaving them is that a case which stops testing what it claims cannot be told from one that still does, since the order that makes them pass is the order they are always run in.
+
+natus-reader is still on vitest 3 and survives it by not measuring coverage
+---------------------------------------------------------------------------
+
+🟢 **Priority: green** — one line, and the package it would have broken is already fixed.
+
+Every package in the workspace declares `vitest` at `^4.1.5` except two, which declared `^3.0.0`. The workspace cannot satisfy that, so an install nests a private vitest 3.2.7 in each — and the nested `@vitest` it brings carries `expect`, `runner`, `snapshot`, `spy` and `utils` but no `coverage-v8`.
+
+That gap is what turns a stale range into a broken suite, and the reason is a convention rather than an oversight: nineteen of the twenty-two packages that run `--coverage` do not declare `@vitest/coverage-v8` at all, resolving it from the root instead, and only the three util packages name it. So the provider is always the hoisted one. A package whose `vitest` range admits the hoisted version gets a matched pair; a package that pins an older one gets its runner nested and its provider hoisted, and vitest refuses the pair outright: *Running mixed versions is not supported*. The invariant to keep, then, is not that every package declare the provider — it is that no package pin a `vitest` the root cannot satisfy, because the provider will not follow it down.
+
+[nic-reader](epicurrents/nic-reader) ran `vitest run --coverage` and so crashed outright, taking its 101 cases out of the workspace run with no failing assertion anywhere to point at it; it is now on `^4.1.5` with its nested copies removed and its suite passing unchanged. [natus-reader](epicurrents/natus-reader) has carried the same nested 3.2.7 since 2026-09-17 and passes, because its `test:unit` is a bare `vitest run` and nothing ever asks for the provider. It is the only package in the workspace whose unit run does not measure coverage, so the day that is corrected is the day it breaks the same way, and the message will name vitest rather than the change that was actually made.
+
+The skew is also what makes this hard to see coming: the nesting appears at install time, not at edit time, so a package can declare an unsatisfiable range for weeks and only break when something unrelated triggers an install.
+
+Twenty-two declarations the workspace cannot satisfy, and no way to see them
+----------------------------------------------------------------------------
+
+🟡 **Priority: yellow** — mostly harmless duplication, with the measurement being the point.
+
+Publishing [scoped-event-bus](util/scoped-event-bus) 0.4.0 on 2026-10-03 left core and the interface declaring `^0.3.0`, which stops at `0.4.0`, and the install that followed fetched the superseded version into each of them, where it shadowed the root symlink and both built against the release the bump existed to supersede. That is the hazard [AGENTS.md](AGENTS.md) describes, and the clean removed them; what was missing was any way to ask which declarations will nest next. Comparing every declared range against the version actually hoisted at the root answers it, and on 2026-10-03 it answered twenty-two.
+
+Thirteen are `esbuild`, declared `^0.28.2` across the readers, the modules and the services against a root holding 0.27.3, with natus-reader asking for `^0.25.0` instead. Each gets its own nested build tool, which is duplication rather than a split, since nothing imports esbuild as a library. Six are babel packages under the OHIF trees, two of them pinned to an exact version. One is the mutex pinning `typescript` to `5.6` exactly, which is deliberate and documented in the file that needs it: the 5.7 declarations are what the `@ts-expect-error` above `TypedNumberArrayConstructor` exists for, so a 5.6 pin and a 5.7 root are the two halves of one decision rather than a drift.
+
+The one worth a second look is `@stdlib/constants-float32`, where core declares `^0.2.1` and [asymmetric-io-mutex](util/asymmetric-io-mutex) declares `^0.0.6` — two majors apart, with core carrying a nested 0.2.1 and the mutex reading the root 0.0.6. Both import `EPS` and each defines its own `floatsAreEqual` over it, so the two float comparisons in the signal path are made against constants from different packages. They agree: `EPS` is `1.1920928955078125e-7` and `MAX_SAFE_INTEGER` is `16777215` in both, which is what a float32 epsilon has to be, so nothing is wrong today. What is wrong is that nobody chose this, and the next install is free to resolve it differently.
