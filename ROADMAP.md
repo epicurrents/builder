@@ -396,6 +396,8 @@ The declared core ranges and the lockfiles disagree with the core that will be p
 
 All eighteen dependent packages name `@epicurrents/core: ^2.0.0` as of 2026-10-03, in both `devDependencies` and `peerDependencies`: the sixteen the sweep has opened, plus `onnx-service` and `onnx-models`, which it opened and split. `wav-reader` was the last on `^1.0.0` and moved with its audit.
 
+**The interface was the nineteenth, and nobody had looked.** It is a workspace member rather than one of `epicurrents/*`, so it fell outside every count in this section, and it named `^0.3.0 || ^1.0.0` in both blocks until its own pass on 2026-10-03 — a range admitting neither the installed core nor either release, two majors behind the siblings. It is now `^2.0.0`, and it does not join the nine below: it reaches none of the surface core's next release adds, which a scan for `applySnapshot`, `SignalReaderWorkerSubstitute` and the three `BaseWorker` members confirms. Being private is what kept the range both invisible and harmless — nothing installs the interface from a registry — but it is the manifest a host application reads when the package is consumed as a dependency.
+
 Nothing failed while one was behind, because nothing resolves through the range. The workspace symlinks core from the checkout, so every build, type-check and test in this repository runs against the checkout whatever the manifest asks for — which is also why the two problems left in this section are both invisible here.
 
 **Until a nested copy exists, at which point the range stops being invisible and starts breaking the workspace.** Observed 2026-10-02, when eight still named `^1.0.0`: all eight carried their own `node_modules/@epicurrents/core` at 1.0.3, and a build of the family failed in exactly those eight — `natus-reader`, `nic-reader` and `wav-reader` outright, on exports core 1.x does not have, and the other five in `build:types` on `Cannot find module '@epicurrents/core/types'`, a subpath 1.x does not export. The interface had one too, and its 1.0.3 against the checkout's 2.0.0 gave every resource type two identities, which is what a dozen `not assignable to` errors in unrelated Vue components turned out to be. Deleting the eight nested directories fixed all of it with the ranges left at `^1.0.0`, which is the proof that the range is not what any of it was about. So the order matters: a nested copy is the thing to look for first, and bumping a range in response to these symptoms treats a cause that is not operating.
@@ -449,3 +451,40 @@ A smaller one of the same kind: every package's `vitest.config.ts` starts straig
 A stray directory worth knowing about before counting anything under `epicurrents/`: there is an `epicurrents/interface/` holding four type files and no manifest, while the real interface is the sibling `interface/` that the workspace and the registry both point at. Nothing references the stray copy, and being inside a git-ignored directory it is tracked by nothing, so it costs only confusion — but two of its four files are named in this document's own account of where the `__EPICURRENTS__` declarations live, so a grep looking for them finds a copy that is not the one being described.
 
 The related manifest question is `"type"`. Every package emits ESM into `dist/` and declares an `exports` map whose `import` condition points at a `.js` file, but exactly one — `natus-reader` — declares `"type": "module"`. The rest depend on Node's module-syntax detection to read those files as ESM, which works from Node 22 onward and is a fallback rather than a declaration. Bundler consumers never reach the question. Declaring it makes the family consistent and the intent explicit; doing it needs a check that nothing in a package's own tooling relies on a `.js` file being CommonJS.
+
+
+`build:assets` can report success without building a package
+------------------------------------------------------------
+
+🟠 **Priority: amber** — a silent skip in the command every other verification depends on.
+
+[scripts/build.mjs](scripts/build.mjs) refuses to build a package that carries its own `node_modules/@epicurrents`, which is the right refusal: a nested core gives every resource type two identities, and the section on the declared ranges above records what that cost once already. But the guard tests whether the directory exists, not whether anything is in it, and the refusal is a `console.error` followed by `return` — the run continues, the other packages build, and the command exits 0.
+
+Both halves were live between 2026-10-02 and 2026-10-03. Clearing the interface's nested copy removed the package inside it and left `interface/node_modules/@epicurrents/` standing empty, so every `build:assets` from then on skipped the interface and said so in one line of a long log while still reporting success. Nothing downstream noticed, because the interface is also built directly by `build:dev` and by its own `npm run build`. Removing the empty directory restored it.
+
+Two changes, and the second matters more than the first: test the directory's contents rather than its existence, and make a refusal fail the run. A build that cannot build a package has not succeeded, and the one place this is most likely to be relied on is a check that nothing was left stale.
+
+
+The interface has no lint, and switching it on has a backlog behind it
+---------------------------------------------------------------------
+
+🟢 **Priority: green** — worth having, with the honest caveat that it may never be worth the fixes.
+
+The interface declared `lint` and `lint:src` scripts, no ESLint configuration, and no ESLint dependency; the binary resolved only because a sibling's devDependency hoists it into the workspace, which is why running it reported a missing config rather than a missing command. The scripts were removed in the package's pass on 2026-10-03 rather than left pointing at nothing.
+
+Adding it is not a copy of a sibling's config. The interface is the only package in the family with single-file components — 110 of them against 80 TypeScript files — so it needs `eslint-plugin-vue` and `vue-eslint-parser`, neither of which is installed anywhere in the workspace, and `eslint src` would have to be told to cover `.vue` at all. The rule set would also want the pruning core's config documents: some two thousand two hundred warnings there came from stylistic rules that disagreed with how the project writes code, and this package is two and a half times core's size in a file type nothing has ever linted.
+
+The reason to want it anyway is that `no-floating-promises` is what finds the defect class the package's own pass found by hand. The reason it may stay unbuilt is the size of the first run, which nobody has measured and which has to be triaged before the rule set means anything.
+
+
+Interface hygiene the 2026-10-03 pass did not finish
+----------------------------------------------------
+
+🟡 **Priority: yellow** — cosmetic, except where it is not; recorded so the remainder is not rediscovered.
+
+The pass took the line-length cap from 150 lines over to 42, and the 42 are three kinds. Eight are `@param` lines, which [AGENTS.md](AGENTS.md) exempts. Four are template tags carrying nothing but `v-for` and `:key`, or `v-else-if`, which the Vue style rules require on the opening tag line — at the indentation a nested table reaches, the two rules cannot both be satisfied and the structural one wins. The remaining thirty are long because they hold an expression, and the fix for those is the rule against inline expressions in templates rather than the one about line length: the expression moves to a method or a computed, and in that last one of them is an `@click` handler, which that rule forbids outright. They are concentrated in [SettingsDialog.vue](interface/src/app/settings/SettingsDialog.vue), [ExamineTool.vue](interface/src/app/views/biosignal/tools/ExamineTool.vue) and [TabViewer.vue](interface/src/app/modules/tab/components/TabViewer.vue), all of which have no component tests, which is why the pass measured them and stopped.
+
+Two more it measured and left. Every TypeScript file now carries the `@package` header; 108 of the 110 single-file components do not, and the two that do arrived in the last three months. Adding them is a change to nearly every file in the package, so it is the same question the `vitest.config.ts` headers above pose — whether the rule means package source or every file — and worth settling once rather than per package. And the casts went from 59 to 41: the eleven asserting members `BiosignalResource` already declares are gone, as are the browser-API ones, and what remains is two clusters the Vuex to Pinia migration dissolves by itself — eight reads of `(store.state as any).INTERFACE` and five passes of a module runtime as `Record<string, unknown>` — plus the global's missing `registerIconLibrary`, which is a core type change rather than an interface one.
+
+Two defects found while measuring and deliberately not touched, both in components with no tests. [AnnotationLabels.vue](interface/src/app/views/biosignal/overlays/AnnotationLabels.vue) computes `otherLabelStart + (...)?.offsetWidth || 0`, which groups as `(a + b) || 0`, so a missing `offsetWidth` yields `0` rather than the start it was defending — the `|| 0` reads as a default for the width and is not one. And [src/i18n/index.ts](interface/src/i18n/index.ts) registers `dateTimeFormats` under `en-US` and `fi-FI` while the locale it is created with is `en` or `fi`, so the formats resolve for no locale; nothing calls `$d` either, which is why it has never shown. The date rendering added in this pass deliberately goes through the `date` and `datetime` message keys instead, which do resolve.
+
