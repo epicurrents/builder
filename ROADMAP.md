@@ -488,3 +488,76 @@ Two more it measured and left. Every TypeScript file now carries the `@package` 
 
 Two defects found while measuring and deliberately not touched, both in components with no tests. [AnnotationLabels.vue](interface/src/app/views/biosignal/overlays/AnnotationLabels.vue) computes `otherLabelStart + (...)?.offsetWidth || 0`, which groups as `(a + b) || 0`, so a missing `offsetWidth` yields `0` rather than the start it was defending — the `|| 0` reads as a default for the width and is not one. And [src/i18n/index.ts](interface/src/i18n/index.ts) registers `dateTimeFormats` under `en-US` and `fi-FI` while the locale it is created with is `en` or `fi`, so the formats resolve for no locale; nothing calls `$d` either, which is why it has never shown. The date rendering added in this pass deliberately goes through the `date` and `datetime` message keys instead, which do resolve.
 
+The util packages were last, and the sentinel was the trap
+----------------------------------------------------------
+
+🟠 **Priority: amber** — recorded because the shape repeats, not because anything is left open here.
+
+The three packages under [util/](util/) were swept on 2026-10-03, after the nineteen in the `@epicurrents` namespace, on the reasoning that nothing in them depends on that namespace so nothing was blocked behind them. That is true of their dependency graph and false of their consequence: all three are dependencies of core, so every defect in them was reachable from every package that had already been looked at. Eight were found, and the two worth remembering are the ones that no test could have caught by being more thorough, because both were agreements between two places that neither place names.
+
+The first is the mutex's field positions. [asymmetric-io-mutex](util/asymmetric-io-mutex/src/index.ts) publishes `UNASSIGNED_VALUE` as the way a field asks to be laid out, and `setDataFields` honours it; `setMetaFields` did not, so a meta field declared the same way kept the sentinel, `-1`, as its position. A position is an offset from the start of the meta region, and the slot one before that region is the lock. Initialization writes the empty-field value into every meta field, so declaring a meta field the documented way wrote `-16777215` over the write lock, after which every lock attempt spun for five seconds and failed with `Maximum retries of locking operation reached` — a message that names the lock and not the field. Nothing had hit it because every existing caller passes explicit positions, which is what the package's own tests do and what the README's example does without saying why.
+
+The second is the log's worker relay. A worker posts its events as `{ action, level, message, scope, context }` and the parent read `data.extra` — a key that message has never carried. The whole context was therefore dropped on every relayed event, and the field that matters is `sensitive`: it is what makes `LogEvent.message` redact itself, so a message a worker withheld from its own console was printed in full on the main thread. `announce` and the error and stack a worker-side `Log.error` captured went the same way. The README is the likely source: it described `Log.add`'s fourth argument as `extra` rather than as the context that holds it, so the reading side was written against the documentation and the posting side against the type. Both were corrected together.
+
+A third instance turned up in the clean-slate pass, in the mutex again and from the same missing term. A field's address is the mutex's start plus the start of its region plus the field's offset, and the two sides of the update handshake each dropped a different part of it: the setters called `Atomics.notify` without the mutex's start, and `waitForFieldUpdate` called `Atomics.wait` with the start but, for a meta field, without the start of the meta region. For data fields they disagreed only where a mutex did not sit at the start of its buffer. For meta fields they disagreed everywhere, by exactly one slot, which is the lock -- so waiting for a meta field to update meant waiting on the lock cell, woken by lock traffic and never by the write it was waiting for. All four sites now call one helper, which is the thing that was missing: the address existed in four copies and in no single place.
+
+The pattern in all three is a contract held in two places with no third place naming it, and in each the fix came with a test whose only job is to fail when the two stop agreeing.
+
+
+The log inspector does not follow its own package
+-------------------------------------------------
+
+🟡 **Priority: yellow** — a whole-file reformat, worth doing when the file is next opened for a real reason.
+
+[LogInspector.ts](util/scoped-event-log/src/LogInspector.ts) is indented with two spaces where the rest of the package uses four, and carries the only eight lines in [util/](util/) still over the 120-column cap. The eight are inline SVG icon definitions, from 179 to 532 characters, and their length is path data rather than code: a `d` attribute tolerates line breaks, so they could be wrapped, but wrapping opaque coordinate lists produces a diff nobody can review for a readability the result does not gain. The indentation and the icons are one item because they are one file, and a reformat that leaves the SVG alone would still be the whole file.
+
+Two defects in the same file were fixed in the pass rather than recorded, both in how it renders an event's payload. It printed `event.extra` directly, which for the `{ error, stack }` shape that `Log.error` always produces renders `[object Object]` — so the inspector was least useful exactly when an error had been logged. The package already had the answer in `Log.formatExtra`, which the console path uses and which was private; it is now public and the inspector calls it. Its `repeat` directive also keyed every line of a payload identically, so Lit could not tell them apart.
+
+
+Removing events in bulk notifies for a scope but not for the log
+----------------------------------------------------------------
+
+🟢 **Priority: green** — small, and the asymmetry is the whole of it.
+
+`Log.clear`, `removeScopeEventsAtLevel` and `removeScopeEventsBelowLevel` each dispatch a `__clear` event to their listeners after removing events, so a consumer showing the log refreshes. `removeEventsAtLevel` and `removeEventsBelowLevel` remove events across every scope and dispatch nothing, so a listener that cleared its view on `__clear` keeps showing events the log no longer holds. The pass left it alone because the fix changes what listeners are told rather than what the log holds, and a consumer that had worked around the silence would then be told twice.
+
+
+The mutex does not export the types its own methods take
+---------------------------------------------------------
+
+🟢 **Priority: green** — an addition, with one question to settle first.
+
+`setData` takes `TypedNumberArray`, `setDataArrays` takes `TypedNumberArrayConstructor` and the input arrays are `ReadonlyTypedArray`, and none of the three is exported from [asymmetric-io-mutex](util/asymmetric-io-mutex/src/index.ts)'s root — the barrel lists ten names and stops short of these. A consumer therefore cannot name the argument types of the public API, and core did the available thing: it declares its own `TypedNumberArray` and `TypedNumberArrayConstructor` in [types/util.ts](epicurrents/core/src/types/util.ts), over a wider set that includes 64-bit and sub-32-bit arrays. Exporting the mutex's own would put two same-named, differently-shaped types in reach of the same import, which is the question to settle before adding them: whether core's are the general ones and the mutex's are the constrained subset, or whether core should narrow to the mutex's where it is talking to the mutex.
+
+The barrel also lists its type names in a value `export` block rather than an `export type` one, which compiles today and would not under `verbatimModuleSyntax`.
+
+Two smaller things the pass measured in the same package. `setDataFields` opens with `if (!this._outputMeta)`, which the constructor makes unreachable — the property is assigned there and is not nullable — so the message behind it has never been printed, and what the intended precondition was is not recoverable from the code: a mutex with no meta fields is legitimate, so the obvious reading of the message would be wrong to enforce. And the top-level declarations are not in the alphabetical order [AGENTS.md](AGENTS.md) asks of a type-only file, because they are in dependency order instead: `ArrayBufferPart` comes before the two types that extend it, and sorting by name puts it after both.
+
+
+Lint does not reach the util tests, and one package has none
+-------------------------------------------------------------
+
+🟢 **Priority: green** — the cheap half of the lint question above.
+
+[scoped-event-bus](util/scoped-event-bus) and [scoped-event-log](util/scoped-event-log) both lint, both pass clean, and both run `eslint src` — so neither package's tests are linted, which is where an unawaited promise is most likely to be written and least likely to be noticed. [asymmetric-io-mutex](util/asymmetric-io-mutex) has no lint script and no configuration at all, and it is the package whose pass found an unawaited write that made `setDataFieldValue` report success for writes that had all failed; `no-floating-promises` names that defect directly. Unlike the interface, these three are small, already have working configurations to copy between them, and have no single-file components, so the first run is a measurable job rather than an open-ended one.
+
+
+The mutex lock path uses promise executors it does not need
+------------------------------------------------------------
+
+🟡 **Priority: yellow** — latent, and the shape invites the defect that was just fixed in it.
+
+`lock` wraps its body in `new Promise(async (resolve) => ...)`. An async executor swallows anything it throws: the rejection has nowhere to go once the promise is the executor's own, so a throw inside the retry loop leaves the promise pending for good. That is the same failure the pass fixed one line into the same function, where an early `return false` — a value a promise executor discards — left every caller of an uninitialized mutex awaiting a promise nothing would settle. The remaining cases are harder to reach but the construction is what makes them possible, and the function needs no executor: it is already `async`, so the retry loop can return directly.
+
+`onceAvailable` has the matching shape from the other side: a `while (true)` loop around a synchronous `Atomics.wait` inside a non-async executor. In a worker that blocks the thread as intended; on a main thread `Atomics.wait` is not permitted, so the method is unusable there, and nothing in the signature or the docstring says which scope it belongs to.
+
+The two older util suites depend on the order they run in
+---------------------------------------------------------
+
+🟡 **Priority: yellow** — green in CI, and silently weaker than it reads.
+
+[IOMutex.test.ts](util/asymmetric-io-mutex/tests/IOMutex.test.ts) and [Log.test.ts](util/scoped-event-log/tests/Log.test.ts) both fail under a shuffled run: four of nineteen cases in the first, eight of twenty-five in the second, varying with the seed. Both were measured with the files added in the 2026-10-03 pass removed, and the counts were identical, so the dependence is entirely in the older files and the new ones are order-independent.
+
+The two causes are different and both are structural. The mutex suite threads a module-level `BUFFER_POS` cursor through its `TestMutex` constructor, so each case carves the next region out of one shared two-kilobyte buffer and a case that runs early gets a different region than it asserts against. The log suite asserts on static state earlier cases change -- `Default print threshold is INFO` holds only while nothing has set it, and the event list and listener registry are global to the class with no per-case reset.
+
+Neither is a one-line fix: the first wants a buffer per case, which is a rewrite of the helper every case uses, and the second wants a reset in `beforeEach`, which several assertions are written against the absence of. The cost of leaving them is that a case which stops testing what it claims cannot be told from one that still does, since the order that makes them pass is the order they are always run in.
