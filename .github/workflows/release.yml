@@ -95,6 +95,8 @@ jobs:
 
             The `.zip` is the deployable edition — the standalone `index.html`, the embeddable `epicurrents-lib.*` library, its stylesheet and worker bundles.
 
+            Source localisation is optional and needs a pre-computed lead field, which is deliberately not in this `.zip`: it is close to incompressible and most deployments do not serve it. To enable the feature, take the `leadfields-*.zip` from the lead-field release and unpack it inside the edition directory, beside `index.html`. Without it the tool reports every montage as unavailable, which is the correct state for a deployment that does not want it. See "Optional: source localisation lead fields" in the builder README.
+
             Reproduce this exact build:
             ```
             npm run setup -- --manifest <the attached .manifest.json>

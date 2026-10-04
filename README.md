@@ -191,6 +191,22 @@ The OHIF viewer is an `external` package — the setup script clones it but does
 npm run build:ohif:dev
 ```
 
+## Optional: source localisation lead fields
+
+The EEG edition's source-localisation tool needs a pre-computed lead field, and editions ship without one — the tool reports every montage as unavailable until a lead field is served, which is the correct state for a deployment that does not want the feature.
+
+Enabling it is one download and no configuration. Take the `leadfields-*.zip` asset from the release and unpack it inside the edition directory, beside `index.html`:
+
+```bash
+unzip leadfields-standard_1020-free-7.5mm.zip -d dist/eeg/
+```
+
+That produces `dist/eeg/leadfields/` holding a `manifest.json` and one content-hashed `.bin`. The tool finds them by itself; delete the folder to turn the feature back off.
+
+The bundle is a separate asset rather than part of the edition zip because it is close to incompressible — 9.4 MB of float64 that gzip barely touches — and most deployments will not serve it. It also changes on its own schedule: the blob is addressed by a hash of the arrays and the parameters that produced them, so it is regenerated when the head model, the montage, the grid or MNE changes, not when the viewer does.
+
+**Regenerating it** is a platform job, not a builder one, because the forward solution needs MNE: `manage.py generate_static_leadfields` in an Epicurrents platform checkout writes the pair into `frontend/vendor/leadfields/`. Zip that folder and attach it to the long-lived lead-field release. Keep the orientation free (three components per source, the generator's default): a fixed-orientation field constrains every dipole to point radially outward from the sphere centre, so a tangential source cannot be represented and comes back as a displaced position instead.
+
 ## Notes and tips
 
 - For local Pyodide testing, the interface's `SETUP.pyodideAssetPath` must point at a hosted static path — serving the WASM files over `file://` will not work.

@@ -14,6 +14,8 @@
  */
 import type { SetupContext } from '@epicurrents/interface'
 import * as interfaceEegModule from '@epicurrents/interface/modules/eeg'
+import type { EegModuleConfiguration } from '@epicurrents/interface/modules/eeg'
+import { leadFieldProvider } from '../leadFields'
 import * as eegModule from '@epicurrents/eeg-module'
 import { EdfExporter, EdfImporter, EdfWorkerSubstitute } from '@epicurrents/edf-reader'
 import { DicomImporter, DicomWorkerSubstitute } from '@epicurrents/dicom-reader'
@@ -21,7 +23,7 @@ import { dcmWorker } from '../workers/dicom'
 import { edfWorker, edfWriterWorker } from '../workers/edf'
 
 /** Register the EEG module, its EDF/DICOM importers, the EDF exporter and the interface EEG UI. */
-export const registerEeg = ({ app, useSAB, registerInterfaceModule }: SetupContext) => {
+export const registerEeg = ({ app, setup, useSAB, registerInterfaceModule }: SetupContext) => {
     app.registerModule('eeg', eegModule)
     // The eeg module ships useMemoryManager=false; opt it into the shared-memory
     // path (must be set after registerModule so 'eeg' resolves as a module field).
@@ -48,5 +50,14 @@ export const registerEeg = ({ app, useSAB, registerInterfaceModule }: SetupConte
     app.registerStudyImporter('eeg/dcm-file', 'Open DICOM file', 'file', eegDcmLoader)
     app.registerStudyImporter('eeg/dcm-folder', 'Open DICOM files from folder', 'folder', eegDcmLoader)
     app.registerStudyImporter('eeg/dcm-url', 'Open DICOM from URL', 'url', eegDcmLoader)
+    // The provider is a function, so it cannot come from a profile — those are serialised into the
+    // bundle as JSON. It is attached to the launch configuration here instead, which is read once
+    // every registrar has run. A configuration given as a string names a JSON document to be
+    // fetched as the whole of the module's configuration, so replacing it with an object here would
+    // discard that document rather than extend it.
+    const eegConfig = setup.modules.eeg
+    if (typeof eegConfig !== 'string') {
+        setup.modules.eeg = { ...eegConfig, leadFieldProvider } as EegModuleConfiguration
+    }
     registerInterfaceModule('eeg', interfaceEegModule)
 }
