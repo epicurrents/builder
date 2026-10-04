@@ -77,6 +77,16 @@ find epicurrents interface -type d \
     -o -path "*/node_modules/asymmetric-io-mutex" \)
 ```
 
+### A floor that admits too much
+
+The range above is the case where a declared range admits too little. The mirror of it is a range that admits the on-disk version and is still wrong, and it is the one a release leaves behind rather than the one a release creates.
+
+A caret on a 1.x or later admits every later minor, so `^2.0.0` keeps resolving once core reaches 2.1.0 and nothing in the workspace reacts: no nested copy, no stale range, a green typecheck. It equally admits core 2.0.0, which is what a consumer installing the package from the registry is free to get. Where the package imports something core gained in 2.1.0, that consumer builds against a core without it — `TS2305` against the published declarations, or `undefined` for a value import at runtime — and no version complaint anywhere, because the range was satisfied.
+
+So a floor is set by the API a package uses, not by the newest release. After a core release the question per package is whether anything it imports postdates the floor it declares, which is answered by resolving its imports against core's barrels **at the floor's own commit** rather than against the working tree — a name present in the checkout says nothing, since the checkout is ahead of the floor by construction. Only the packages that fail move; a package whose imports all predate its floor declares it truthfully, and raising it anyway asserts a dependency it does not have.
+
+Raise the floor after the release is on the registry, never before. A floor naming a version that does not exist yet is unsatisfiable, which is the nested-copy trap above, so the two mistakes sit one on each side of the publish.
+
 ---
 
 ## Code comment conventions
