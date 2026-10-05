@@ -1,15 +1,16 @@
 /**
  * Edition-owned lead-field source for the EEG source-localisation tool.
  *
- * The interface asks for a lead field through the `LeadFieldProvider` a consumer injects at
- * `SETUP.modules.eeg.leadFieldProvider` and holds no URL of its own, so the one location an
- * edition knows about lives here: a static bundle packaged beside the page.
+ * A lead field is resolved through a `LeadFieldProvider` function, which no profile can carry
+ * because a profile is serialised as JSON. This module is the one place an edition names a location
+ * for one: a static bundle unpacked into the edition directory, which the release ships as a
+ * separate asset rather than inside the bundle zip.
  *
  * The bundle is optional, and that is the whole of the configuration. A deployment that serves
- * `leadfields/` gets source localisation; one that deletes the folder gets an edition without it,
- * and neither has to declare anything. A manifest that does not answer therefore resolves to null
- * rather than raising — the tool renders that as the montage not being available, which is the
- * honest description of both cases. The one failure worth reporting is a manifest that lists a
+ * `leadfields/` gets source localisation; one that never unpacks it, or deletes the folder again,
+ * gets an edition without it, and neither has to declare anything. A miss therefore resolves to
+ * null rather than raising, because an absent bundle and a montage the manifest does not list are
+ * both an answer rather than a fault. The one failure worth reporting is a manifest that lists a
  * blob it cannot then produce, because that is a bundle in need of regenerating rather than a
  * choice anyone made.
  * @package    epicurrents/builder
