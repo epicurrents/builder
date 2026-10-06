@@ -12,6 +12,18 @@
  * package filter applied below. Through npm, options must follow `--` (`npm run setup -- --include-private`);
  * placed before it, npm takes them as its own config and they never reach this script.
  *
+ * The run has three phases and their order is the point: every selected package is cloned, then the
+ * workspace is installed once, then each package is built. Installing inside a package as it arrives
+ * instead reconciles the root lock file against whichever members exist at that moment, so entries for
+ * packages not yet cloned are pruned and re-resolved against their ranges once they do arrive. The lock
+ * file then pins only what the last install happened to need, and two setups of the same commits
+ * resolve different dependency versions.
+ *
+ * `--frozen-lockfile` installs with `npm ci`, which resolves nothing the lock file does not already
+ * pin and so cannot drift. It requires the lock file to describe exactly the workspace on disk, which
+ * holds for a selection of every public package and not for a tree carrying private ones as well, so a
+ * release build passes it and a maintainer's working tree does not.
+ *
  * Original method from https://stackoverflow.com/a/20643568.
  * @package    epicurrents/builder
  * @copyright  2025 Sampsa Lohi
@@ -23,13 +35,22 @@ import { deleteFolderRecursive, run, sep } from './util.mjs'
 import { packages, rootDir } from './env.mjs'
 import { resolveSelection } from './profile.mjs'
 
-export function initializeDependency (pkg, repository, parent, ref, includeExternal = false) {
+/**
+ * Clone a package and check out the requested ref, leaving it uninstalled and unbuilt.
+ * @param {object} pkg - Package entry from the registry in `scripts/env.mjs`.
+ * @param {string} repository - Repository or owner URL the package is cloned from.
+ * @param {string} parent - Directory the package is cloned into.
+ * @param {string} [ref] - Exact commit to check out detached; a branch is checked out and pulled instead.
+ * @param {boolean} [includeExternal] - Whether to clone packages marked `external`.
+ * @returns {boolean} - Whether this package is installed and built by our toolchain.
+ */
+export function cloneDependency (pkg, repository, parent, ref, includeExternal = false) {
     // External packages (heavy out-of-monorepo repos, e.g. the OHIF viewer) are skipped by default —
     // they are large and only some editions need them. Pass `--include-external` to clone them. Checked
     // before cloning, not after, so the default setup never pulls them.
     if (pkg.external && !includeExternal) {
         console.info(`Package ${pkg.name} is marked external, skipping (pass --include-external to clone it).`)
-        return
+        return false
     }
     if (!fs.existsSync(parent)) {
         console.info(`Creating missing parent directory ${parent}.`)
@@ -65,31 +86,28 @@ export function initializeDependency (pkg, repository, parent, ref, includeExter
     // they have their own (e.g. OHIF uses yarn with a bespoke procedure). Install and build them manually.
     if (pkg.external) {
         console.info(`Package ${pkg.name} is external — cloned only; install and build it manually.`)
-        return
+        return false
     }
-    console.info(`Installing package ${pkg.name}.`)
-    run('npm i', pkgDir)
-    // Remove local epicurrents packages, event bus and log before building to use the same version in all packages.
-    if (!pkg.external) {
-        const localCore = [pkgDir, 'node_modules', '@epicurrents'].join(sep)
-        if (fs.existsSync(localCore) && fs.lstatSync(localCore).isDirectory()) {
-            console.debug(`Deleting local core from package.`)
-            deleteFolderRecursive(localCore)
-        }
-        const localMtx = [pkgDir, 'node_modules', 'asymmetric-io-mutex'].join(sep)
-        if (fs.existsSync(localMtx) && fs.lstatSync(localMtx).isDirectory()) {
-            console.debug(`Deleting local mutex from package.`)
-            deleteFolderRecursive(localMtx)
-        }
-        const localBus = [pkgDir, 'node_modules', 'scoped-event-bus'].join(sep)
-        if (fs.existsSync(localBus) && fs.lstatSync(localBus).isDirectory()) {
-            console.debug(`Deleting local event bus from package.`)
-            deleteFolderRecursive(localBus)
-        }
-        const localLog = [pkgDir, 'node_modules', 'scoped-event-log'].join(sep)
-        if (fs.existsSync(localLog) && fs.lstatSync(localLog).isDirectory()) {
-            console.debug(`Deleting local log from package.`)
-            deleteFolderRecursive(localLog)
+    return true
+}
+
+/**
+ * Build an already cloned and installed package, after its prebuild steps.
+ *
+ * The shared singletons are deleted from the package first. A workspace install links them from the
+ * sibling checkout rather than fetching them, so nothing is normally there to delete; a copy that does
+ * appear means a package declares a range the checked-out sibling does not satisfy, and building
+ * against it would embed a second core.
+ * @param {object} pkg - Package entry from the registry in `scripts/env.mjs`.
+ * @param {string} parent - Directory the package was cloned into.
+ */
+export function buildDependency (pkg, parent) {
+    const pkgDir = [parent, pkg.name].join(sep)
+    for (const shared of ['@epicurrents', 'asymmetric-io-mutex', 'scoped-event-bus', 'scoped-event-log']) {
+        const installed = [pkgDir, 'node_modules', shared].join(sep)
+        if (fs.existsSync(installed) && fs.lstatSync(installed).isDirectory()) {
+            console.debug(`Deleting ${shared} installed inside ${pkg.name}.`)
+            deleteFolderRecursive(installed)
         }
     }
     // Run possible prebuild steps.
@@ -117,7 +135,9 @@ if (manifestPath) {
     pins = new Map(manifest.packages.map(p => [p.name, p.commit]))
     console.info(`Reproducing from manifest '${manifestPath}' (edition ${manifest.edition}, ${pins.size} pinned packages).`)
 }
-let initialized = 0
+// The selection, in registry order, which is dependency order: the shared utilities, then core and
+// the packages that embed it, then the interface. The build phase below walks it unchanged.
+const selected = []
 // Packages a scope named explicitly but the selection filter excluded — reported if nothing ran.
 const excluded = []
 for (const [key, value] of packages) {
@@ -139,8 +159,7 @@ for (const [key, value] of packages) {
                     }
                     return
                 }
-                initializeDependency(pkg, repository, `${[rootDir, key].join(sep)}`, pins?.get(pkg.name), includeExternal)
-                initialized++
+                selected.push({ pkg, repository, parent: [rootDir, key].join(sep), ref: pins?.get(pkg.name) })
             })
         } else if (Object.hasOwn(value, 'name')) {
             if (scopeLimit && scopeLimit[1] && scopeLimit[1] !== value.name) {
@@ -152,12 +171,11 @@ for (const [key, value] of packages) {
                 }
                 continue
             }
-            initializeDependency(value, value.repository, rootDir, pins?.get(value.name), includeExternal)
-            initialized++
+            selected.push({ pkg: value, repository: value.repository, parent: rootDir, ref: pins?.get(value.name) })
         }
     }
 }
-if (!initialized && excluded.length) {
+if (!selected.length && excluded.length) {
     // The package exists in the registry but the selection left it out; say why rather than reporting
     // an unknown scope. npm treats an option placed before `--` as its own config and exposes it only as
     // an `npm_config_*` variable, so the flag can be typed and still never reach this script.
@@ -171,7 +189,7 @@ if (!initialized && excluded.length) {
         : ' It is not part of the selected profile.'
     throw new Error(`Package ${names} matched the scope but was excluded from the selection.${hint}`)
 }
-if (!initialized) {
+if (!selected.length) {
     // A scope that matches no package is a mistake, not an empty success: it used to exit 0 having
     // done nothing, which made a mis-parsed `--profile` value look like a completed setup.
     throw new Error(
@@ -181,7 +199,19 @@ if (!initialized) {
             : 'No packages matched. Check the profile and the package registry in scripts/env.mjs.'
     )
 }
-// Link the freshly cloned packages into the workspace once, after they all exist.
-console.info('Installing workspace dependencies.')
-run('npm install', rootDir)
+const buildable = []
+for (const { pkg, repository, parent, ref } of selected) {
+    if (cloneDependency(pkg, repository, parent, ref, includeExternal)) {
+        buildable.push({ pkg, parent })
+    }
+}
+// Once, after every selected package exists. Both halves of that matter: a workspace install resolves
+// each member's dependencies, so no package needs one of its own, and a lock file can only hold the
+// tree it was written for if the whole tree is present when it is read.
+const frozen = options.get('frozen-lockfile') === true
+console.info(`Installing workspace dependencies${frozen ? ' from the lock file' : ''}.`)
+run(frozen ? 'npm ci' : 'npm install', rootDir)
+for (const { pkg, parent } of buildable) {
+    buildDependency(pkg, parent)
+}
 console.info("Done initializing packages.")

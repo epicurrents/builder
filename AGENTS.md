@@ -62,7 +62,7 @@ Every package declares `@epicurrents/core` and the shared utilities as dependenc
 
 If a package suddenly reports `TS2339` for methods that exist on a core base class, the cause is almost always a stale nested `@epicurrents/core` shadowing the workspace symlink — run `node scripts/clean.mjs`.
 
-**A root `npm install` recreates them, so treat one as a step that has to be followed by a clean.** Installing at the root is not neutral: a package whose declared range does not admit the version checked out in the workspace gets a registry copy installed inside its own `node_modules`, and the root lockfile is git-ignored, so nothing records that this has happened. While any package still declares a range the workspace cannot satisfy, a plain `npm install` is enough to break the workspace.
+**A root `npm install` recreates them, so treat one as a step that has to be followed by a clean.** Installing at the root is not neutral: a package whose declared range does not admit the version checked out in the workspace gets a registry copy installed inside its own `node_modules`. The committed lock records that copy as an entry resolving to the registry rather than a link, so a lock diff naming one is the signal that a range has gone stale. While any package still declares a range the workspace cannot satisfy, a plain `npm install` is enough to break the workspace.
 
 **The range that does this is any workspace dependency's, not only core's.** Releasing a util package is the case to watch, because one bump makes every consumer's range stale at once, and for a package below 1.0 it does so on a *minor*: `^0.3.0` means `>=0.3.0 <0.4.0`, so publishing `0.4.0` leaves every `^0.3.0` consumer unsatisfiable and the next install nests a registry copy of the old version in each. The fix is the same clean, but the range has to be corrected first or the copies come straight back.
 
@@ -175,9 +175,11 @@ Parse them with `parseArgs` / `resolveSelection` (`scripts/util.mjs`, `scripts/p
 
 `scripts/manifest.mjs` records each package's exact commit for an edition into `dist/<edition>/manifest.json`, and `npm run setup -- --manifest <file>` checks those commits back out.
 
-This pins **sources, not the whole dependency graph**: setup installs each package with `npm i` against its own lockfile, so third-party resolution is pinned only as far as those lockfiles pin it. Don't describe it as byte-for-byte reproducible.
+A manifest pins **sources, not the dependency graph**, so it is not reproducibility by itself. The root `package-lock.json` pins the rest, which is why it is committed, and a manifest records the builder's own commit because the lock that built an edition lives in that commit. A release build is reproducible byte for byte from those two together; a manifest reproduction on its own is not, since a selection wider than the manifest leaves every package it does not name at a branch head.
 
-The builder's own root `package-lock.json` is git-ignored deliberately. The workspaces are cloned rather than committed, so a root lockfile can never describe a checkout anyone else has: `npm ci` cannot resolve its `link: true` entries, and a profile-scoped setup clones a different subset each time.
+The lock binds only because setup clones every selected package before installing once, at the root. Its workspace entries are links into those checkouts and resolve only where the directories already exist, and an install run inside each package instead prunes the entries of packages not yet cloned and re-resolves them on arrival, leaving the lock pinning whatever the last install happened to need.
+
+`--frozen-lockfile` installs with `npm ci` and the release workflow passes it. Two things follow. **The committed lock describes every public package and nothing else**, so regenerate it in a checkout holding exactly those — a clean clone and `npm run setup` — and never commit the rewrite that an install in a tree carrying private packages produces. And a release fails in `npm ci` once a public package changes its dependencies after the lock was written; that failure is the point of the flag, so answer it by regenerating the lock rather than by dropping the flag.
 
 Tagging `<edition>-v<major>.<minor>.<patch>` on `main` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds the edition and attaches it plus its manifest to a GitHub release. The workflow clones from public repositories with no credentials — it must never authenticate against a private one.
 

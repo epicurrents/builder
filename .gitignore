@@ -20,11 +20,19 @@ node_modules
 /vendor
 *.local
 
-# The workspaces are cloned, not committed, so a root lockfile can never describe a checkout that
-# anyone else has: `npm ci` cannot resolve its `link: true` entries, and a profile-scoped setup
-# clones a different subset every time. Package versions are pinned per release by
-# scripts/manifest.mjs instead.
-package-lock.json
+# The root lock file is committed, because scripts/manifest.mjs does not pin dependency versions:
+# it records each package's commit, so two setups of one manifest can still resolve different
+# versions of everything the packages depend on, and an edition built twice is not the same bytes.
+#
+# A lock file only binds here because setup clones every selected package before installing once.
+# Its workspace entries are links into those checkouts, so they resolve only if the directories
+# already exist, and an install run per package instead prunes the entries of packages not yet
+# cloned and re-resolves them on arrival.
+#
+# What is committed therefore describes one workspace: every public package, which is what a release
+# builds and what `--frozen-lockfile` checks `npm ci` against. A profile-scoped setup clones a subset
+# and a maintainer's tree adds the private packages, and an install in either rewrites the file. Do
+# not commit that rewrite; a release would fail in `npm ci` against a checkout it does not describe.
 
 # Private build profiles — editions that may reference non-public packages.
 # The folder and its README stay tracked; the profile files do not.

@@ -85,7 +85,7 @@ A profile also names the modalities its edition registers (`setup.activeModules`
 
 **Reproducible releases.** `scripts/manifest.mjs` records each package's exact commit for an edition, and `npm run setup -- --manifest <file>` rebuilds from those pins — no npm version bumps needed. Tagging `<edition>-v<major>.<minor>.<patch>` on `main` triggers the release workflow, which builds the (public) edition and attaches it plus its manifest to a GitHub release.
 
-The manifest pins *sources*, not the whole dependency graph: each package is installed with `npm i` against its own lockfile, so third-party resolution is pinned only as far as those lockfiles pin it.
+The manifest pins *sources*; the committed root `package-lock.json` pins the dependency graph, and the manifest records the builder commit the lock came from. The release workflow installs with `npm ci` so it cannot resolve anything the lock does not already name. Reproducing from a manifest alone is close but not guaranteed byte for byte, because the selection is wider than the manifest and leaves the packages it does not name at a branch head.
 
 > `npm run build:lib` / `build:app` build the interface's *own* all-in bundle (every module) rather than a profile-selected edition; they remain for the platform embedding pipeline. New builds should use `build:edition`.
 

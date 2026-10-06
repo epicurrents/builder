@@ -59,12 +59,26 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # Load-bearing rather than a floor. The setup step below clones the edition's packages
+          # one at a time into a checkout whose `workspaces` globs therefore match almost nothing
+          # yet, and npm 10 cannot install a workspace member in that state: arborist
+          # dereferences a null node and fails with `Cannot read properties of null (reading
+          # 'edgesOut')`. npm 11 installs it. Node 22 ships npm 10, so lowering this breaks the
+          # clone step, not the build.
+          node-version: '24'
 
-      # Clone the edition's packages from their PUBLIC repositories — no credentials.
-      # A private package would fail here by design; such editions are built locally.
-      - name: Clone and build the edition's packages (from main)
-        run: npm run setup -- --profile "${{ steps.tag.outputs.edition }}"
+      # Every PUBLIC package, not just the edition's. The interface type-checks its whole source
+      # tree, so a clone restricted to one edition leaves the other modules' imports unresolvable
+      # and `vue-tsc` fails before anything is built. Restricting the clone is what `INCLUDE_MODULES`
+      # exists for, and until the builder sets it from the profile, the edition is narrowed at the
+      # bundle step below instead — which is what decides the artifact in any case.
+      #
+      # No credentials: a package marked `public: false` is skipped here rather than attempted, so
+      # a private repository is never reached. What keeps a private edition from being released is
+      # `loadProfile` refusing a non-public profile, and `profiles/local/` being untracked so a CI
+      # checkout cannot name one.
+      - name: Clone and build every public package (from main)
+        run: npm run setup -- --frozen-lockfile
 
       - name: Build the edition and its manifest
         env:
@@ -97,8 +111,10 @@ jobs:
 
             Source localisation is optional and needs a pre-computed lead field, which is deliberately not in this `.zip`: it is close to incompressible and most deployments do not serve it. To enable the feature, take the `leadfields-*.zip` from the lead-field release and unpack it inside the edition directory, beside `index.html`. Without it the tool reports every montage as unavailable, which is the correct state for a deployment that does not want it. See "Optional: source localisation lead fields" in the builder README.
 
-            Reproduce this exact build:
+            Reproduce this build, from the builder commit the manifest records — its committed lock file is what pins the dependency versions this edition was built against, so a different builder commit can resolve different ones:
             ```
+            git clone https://github.com/epicurrents/builder && cd builder
+            git checkout <builder.commit from the attached .manifest.json>
             npm run setup -- --manifest <the attached .manifest.json>
             npm run build:edition
             ```

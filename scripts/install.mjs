@@ -3,6 +3,11 @@
  * conflicting @epicurrents namespace packages afterwards.
  *
  * Scope the run positionally (`epicurrents`) or to an edition with `--profile <name>`.
+ *
+ * This installs inside each package, so it rewrites the committed root lock file down to whichever
+ * members the scope covers. That is a working-tree convenience, not a way to prepare a release: a
+ * release installs once at the root, through `setup.mjs`, which is the only ordering a lock file can
+ * survive. Do not commit the rewrite.
  * @package    epicurrents/builder
  * @copyright  2025 Sampsa Lohi
  * @license    Apache-2.0

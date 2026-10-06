@@ -173,6 +173,22 @@ A clinician or researcher, not necessarily a programmer, should be able to produ
 The published docs have their own drift, found while refreshing them during `tab-module`'s pass. The Testing section of `development.md` describes the alias mechanism as core's `package.json` `imports` field mapping `#*` to `src/`, which the move to `epicurrents-build-types` removed, and it describes `eeg-module` redirecting `@epicurrents/core` to a mock as the way a package stays isolated, which is the practice two audits since have argued against. The per-package suite counts in the same section were corrected in that pass; the two mechanism paragraphs need someone to state what the arrangement is now rather than a count.
 
 
+The release workflow sets up more than the edition needs
+-------------------------------------------------------
+
+🟡 **Priority: yellow** — the release works; it builds about nineteen packages to ship four.
+
+[.github/workflows/release.yml](.github/workflows/release.yml) runs `npm run setup` with no profile, so every public package is cloned and built before an edition is bundled from a handful of them. The reason is the interface: `npm run build` there type-checks the whole source tree, so a clone restricted to one edition leaves the other module directories importing packages that were never fetched, and `vue-tsc` fails with a page of unresolved modules before the bundle step is reached. The first release attempt failed exactly that way.
+
+The interface already has the mechanism for this. `INCLUDE_MODULES` is an allowlist that [interface/scripts/typecheck.mjs](interface/scripts/typecheck.mjs) and both of its vite configs honour: a non-empty value excludes every module directory not named, plus the all-in reference setup and the standalone entry that imports it. Its docstring describes this exact failure. Nothing in the builder sets it.
+
+Wiring it is a small change with one question to answer first. A profile's `setup.activeModules` is the obvious source, `['eeg']` for the EEG edition, but a profile names packages as well as modules, and whether a reader implies a module directory has to be decided rather than assumed: the EEG edition carries `dicom-reader`, which registers DICOM studies through an `EegStudyLoader` rather than through the interface's radiology module, so `eeg` alone is right for that edition and would be wrong for one presenting radiology.
+
+The other half is that `INCLUDE_MODULES` trims the bundle as well as the type-check. That is what it is for, but it means setting it changes the artifact, so the change wants verifying against a built edition rather than riding along with a release.
+
+Worth more than the build time it saves: it is also what would make a manifest reproduce an edition exactly. A manifest pins the packages its edition names, so a setup narrowed to those pins everything it clones, while the wider selection a full type-check needs leaves the rest at a branch head. Reproduction is only as exact as the narrowest selection that can be built.
+
+
 Tests and CI
 ------------
 
