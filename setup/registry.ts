@@ -26,6 +26,7 @@ import { registerEeg } from './modules/eeg'
 import { registerEmg } from './modules/emg'
 import { registerHtm } from './modules/htm'
 import { registerPdf } from './modules/pdf'
+import { registerPsg } from './modules/psg'
 
 /** A registrar composes one modality's core module, readers and interface UI. */
 export type ModuleRegistrar = (ctx: SetupContext) => void | Promise<void>
@@ -36,4 +37,5 @@ export const MODULE_REGISTRARS: Record<string, ModuleRegistrar> = {
     emg: registerEmg,
     htm: registerHtm,
     pdf: registerPdf,
+    psg: registerPsg,
 }

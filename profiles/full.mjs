@@ -18,6 +18,7 @@ export default {
         'doc-module',
         'eeg-module',
         'emg-module',
+        'psg-module',
         'dicom-reader',
         'edf-reader',
         'htm-reader',
@@ -26,6 +27,6 @@ export default {
         'pyodide-service',
     ],
     setup: {
-        activeModules: ['eeg', 'emg', 'htm', 'pdf'],
+        activeModules: ['eeg', 'emg', 'htm', 'pdf', 'psg'],
     },
 }
