@@ -60,13 +60,28 @@ const register = async (ctx: SetupContext) => {
         registerPyodide(ctx)
     }
     const active = setup.activeModules?.length ? setup.activeModules : Object.keys(MODULE_REGISTRARS)
+    // A registrar may add importers to a modality another registrar owns and register no interface
+    // module of its own, as `psg` does for `eeg`. The interface loads one module per name in
+    // `activeModules` and fails the whole launch on a name it has no module for, so the names
+    // reaching it are narrowed to those that registered one.
+    const withInterface = new Set<string>()
+    const registrarCtx: SetupContext = {
+        ...ctx,
+        registerInterfaceModule: (name, module) => {
+            withInterface.add(name)
+            ctx.registerInterfaceModule(name, module)
+        },
+    }
     for (const name of active) {
         const registrar = MODULE_REGISTRARS[name]
         if (!registrar) {
             console.warn(`No registrar for module '${name}'; skipping.`)
             continue
         }
-        await registrar(ctx)
+        await registrar(registrarCtx)
+    }
+    if (setup.activeModules?.length) {
+        setup.activeModules = setup.activeModules.filter(name => withInterface.has(name))
     }
 }
 
