@@ -1,0 +1,20 @@
+{
+    "name": "@epicurrents/builder-e2e",
+    "private": true,
+    "version": "0.0.0",
+    "description": "Browser tests of built editions.",
+    "type": "module",
+    "license": "Apache-2.0",
+    "scripts": {
+        "test": "playwright test",
+        "test:types": "tsc -p tsconfig.json",
+        "fixtures": "node --experimental-strip-types --no-warnings write-fixtures.ts",
+        "serve": "npm run fixtures && node server.mjs",
+        "install:browsers": "playwright install chromium"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.64.1",
+        "@types/node": "^26.6.6",
+        "typescript": "^5.9.3"
+    }
+}

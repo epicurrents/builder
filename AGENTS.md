@@ -187,7 +187,9 @@ Tagging `<edition>-v<major>.<minor>.<patch>` on `main` triggers [`.github/workfl
 
 ## Testing
 
-The packages use **Vitest**, each with its own `vitest.config.ts` and `tests/` directory; `npm run test` runs every package's suite via workspaces. The builder itself has no tests yet — see [ROADMAP.md](ROADMAP.md).
+The packages use **Vitest**, each with its own `vitest.config.ts` and `tests/` directory; `npm run test` runs every package's suite via workspaces. The builder's scripts have no tests yet — see [ROADMAP.md](ROADMAP.md).
+
+Built editions have browser tests in [e2e/](e2e/README.md): Playwright against `dist/<edition>/`, run with `npm run test:e2e` after `build:edition`. The directory is a separate npm package rather than a workspace, so installing Playwright never touches the root lock. Fixtures are synthetic files written at test time; a real recording never goes in.
 
 When changing the scripts, the things worth verifying by hand are the ones that fail silently rather than loudly:
 

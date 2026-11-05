@@ -33,6 +33,7 @@
         "update": "node scripts/update.mjs",
         "test": "npm run test --workspaces --if-present",
         "test:core": "cd epicurrents/core && vitest run --coverage",
+        "test:e2e": "cd e2e && npm test",
         "test:eeg": "cd epicurrents/eeg-module && vitest run --coverage",
         "test:tab": "cd epicurrents/tab-module && vitest run --coverage",
         "typecheck": "node scripts/typecheck.mjs"

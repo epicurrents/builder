@@ -161,6 +161,7 @@ The same scoping works for `update`, `instl`, `clean`, `build:asset` and `build:
 | `npm run build:lib` / `build:app` | — | Build the interface's own all-in library / standalone app (platform pipeline). |
 | `npm run build:dev` | — | Full development stack: assets + OHIF + copy + app. |
 | `npm run test` | — | Run every package's test suite (`vitest`). |
+| `npm run test:e2e` | `e2e/` | Run the browser tests against a built edition; see [e2e/README.md](e2e/README.md). |
 
 ## Why cleaning matters
 
