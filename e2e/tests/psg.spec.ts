@@ -23,12 +23,12 @@ import {
 type Samples = { rate: number, data: number[] } | null
 
 /**
- * The PSG montage's order for the fixture: role groups in the order a scorer reads a study, each group in the order the
- * file has it.
+ * The PSG montage's order for the fixture: role groups in the order a scorer reads a study, the EEG in pairs from front
+ * to back with the left first, eye and leg channels left first, and the rest in the order the file has it.
  */
 const SCORER_ORDER = [
-    'O2-M1', 'C4-M1', 'C3-M2', 'F4-M1', 'LOC-M2', 'ROC-M1', 'EMG/Chin', 'EMG/LegL', 'EMG/LegR', 'ECG',
-    'Thorax', 'Abdomen', 'Resp nasal', 'SpO2', 'Position',
+    'F4-M1', 'C3-M2', 'C4-M1', 'O2-M1', 'LOC-M2', 'ROC-M1', 'EMG/Chin', 'EMG/LegL', 'EMG/LegR', 'ECG',
+    'Thorax', 'Abdomen', 'Resp nasal', 'SpO2', 'Position', 'Snore',
 ]
 
 test.describe('a continuous study', () => {
@@ -66,6 +66,62 @@ test.describe('a continuous study', () => {
         expect(montage.channels).toEqual(SCORER_ORDER)
     })
 
+    test('opens with the AASM band for EEG and EOG, and filters ECG in a band of its own', async ({ page }) => {
+        await openStudy(page, 'psg-continuous.edf')
+        expect((await settledState(page)).state).toBe('ready')
+        await expect(page.getByText('Please wait...')).toBeHidden({ timeout: 15_000 })
+        const result = await withRecording(page, async r => {
+            const signals = await r.activeMontage.getAllSignals([4, 14])
+            const ecg = r.activeMontage.channels.findIndex((c: { label: string }) => c.label === 'ECG')
+            const data = signals.signals[ecg].data
+            const { highpassFilter, lowpassFilter } = r.activeMontage.channels[ecg]
+            return {
+                ecgFilters: { highpassFilter, lowpassFilter },
+                filters: { ...r.filters },
+                mean: data.reduce((a: number, b: number) => a + b, 0)/data.length,
+            }
+        })
+        expect(result.filters).toEqual(expect.objectContaining({ highpass: 0.3, lowpass: 35 }))
+        expect(result.ecgFilters).toEqual({ highpassFilter: 0.5, lowpassFilter: 40 })
+        // The fixture's ECG carries 300 µV of DC, which the high-pass takes out; 10 s is 11 whole cycles of its sine, so
+        // what remains is the filter's. The signal is in volts.
+        expect(Math.abs(result.mean)).toBeLessThan(30e-6)
+    })
+
+    test('draws each channel type with its own band, sensitivity and polarity', async ({ page }) => {
+        await openStudy(page, 'psg-continuous.edf')
+        expect((await settledState(page)).state).toBe('ready')
+        await expect(page.getByText('Please wait...')).toBeHidden({ timeout: 15_000 })
+        const channels = await withRecording(page, r => Object.fromEntries(r.activeMontage.channels.map((c: any) => [
+            c.label,
+            { hp: c.highpassFilter, lp: c.lowpassFilter, polarity: c.displayPolarity, sensitivity: c.sensitivity },
+        ])) as Record<string, { hp: number, lp: number, polarity: number, sensitivity: number }>)
+        for (const label of ['Thorax', 'Abdomen', 'Resp nasal']) {
+            expect(channels[label], label).toEqual(expect.objectContaining({ hp: 0.1, lp: 10 }))
+        }
+        for (const label of ['EMG/Chin', 'EMG/LegL', 'EMG/LegR']) {
+            expect(channels[label], label).toEqual(expect.objectContaining({ hp: 1, lp: 40 }))
+        }
+        expect(channels['Snore']).toEqual(expect.objectContaining({ hp: 0.5, lp: 40 }))
+        // ECG is drawn positive up at 1000 µV/cm, which the plot takes in volts.
+        expect(channels['ECG'].polarity).toBe(1)
+        expect(channels['ECG'].sensitivity).toBeCloseTo(1e-3, 12)
+        // The EEG keeps the recording's band.
+        expect(channels['C4-M1']).toEqual(expect.objectContaining({ hp: null, lp: null }))
+    })
+
+    test('draws SpO2 against its range, filling its band', async ({ page }) => {
+        await openStudy(page, 'psg-continuous.edf')
+        expect((await settledState(page)).state).toBe('ready')
+        await expect(page.getByText('Please wait...')).toBeHidden({ timeout: 15_000 })
+        const spo2 = await withRecording(page, r => {
+            const channel = r.activeMontage.channels.find((c: { label: string }) => c.label === 'SpO2')
+            return { range: channel.displayRange, sensitivity: channel.sensitivity }
+        })
+        expect(spo2.range).toEqual([50, 100])
+        await page.screenshot({ path: test.info().outputPath('spo2-range.png') })
+    })
+
     test('switches montages from the montage control and draws every channel', async ({ page }) => {
         const problems = collectProblems(page)
         await openStudy(page, 'psg-continuous.edf')
@@ -85,6 +141,43 @@ test.describe('a continuous study', () => {
         await attachWarnings(problems)
         expect(unexpectedFailures(problems)).toEqual([])
     })
+
+    test('gives each task montage room for the signals it is scored from', async ({ page }) => {
+        const problems = collectProblems(page)
+        await openStudy(page, 'psg-continuous.edf')
+        expect((await settledState(page)).state).toBe('ready')
+        await expect(page.getByText('Please wait...')).toBeHidden({ timeout: 15_000 })
+        const select = page.locator('wa-select').filter({ has: page.locator('wa-option[value="raw-signals"]') })
+        /** The height of a channel's band on screen, as a fraction of the plot, by label. */
+        const bands = () => withRecording(page, r => Object.fromEntries(
+            r.activeMontage.channels.map((c: any) => [c.label, c.offset.top - c.offset.bottom])
+        ) as Record<string, number>)
+        const heights = {} as Record<string, Record<string, number>>
+        for (const label of ['As recorded', 'Sleep staging', 'Respiratory events']) {
+            await select.click()
+            await select.locator('wa-option', { hasText: label }).click()
+            await expect.poll(() => withRecording(page, r => r.activeMontage?.label)).toBe(label)
+            heights[label] = await bands()
+            await page.screenshot({ path: test.info().outputPath(`${label.toLowerCase().replace(/ /g, '-')}.png`) })
+        }
+        // The respiratory montage keeps the central EEG only.
+        expect(Object.keys(heights['Respiratory events'])).not.toContain('F4-M1')
+        expect(Object.keys(heights['Respiratory events'])).not.toContain('O2-M1')
+        // Nasal pressure and snore are drawn at their own sensitivities there, the EEG at the viewer's.
+        const sensitivities = await withRecording(page, r => Object.fromEntries(
+            r.activeMontage.channels.map((c: any) => [c.label, c.sensitivity])
+        ) as Record<string, number>)
+        expect(sensitivities['Resp nasal']).toBeCloseTo(0.1, 12)
+        // In the unit the plot reads them in: the fixture's snore is in µV and reaches it in volts.
+        expect(sensitivities['Snore']).toBeCloseTo(50e-6, 12)
+        expect(sensitivities['C4-M1']).toBe(0)
+        expect(heights['As recorded']['C4-M1']).toBeCloseTo(heights['As recorded']['Thorax'], 6)
+        expect(heights['Sleep staging']['C4-M1']/heights['Sleep staging']['Thorax']).toBeCloseTo(4, 6)
+        expect(heights['Sleep staging']['EMG/Chin']/heights['Sleep staging']['EMG/LegL']).toBeCloseTo(2, 6)
+        expect(heights['Respiratory events']['Thorax']/heights['Respiratory events']['C4-M1']).toBeCloseTo(4, 6)
+        await attachWarnings(problems)
+        expect(unexpectedFailures(problems)).toEqual([])
+    })
 })
 
 test.describe('the rolling cache', () => {
@@ -94,6 +187,8 @@ test.describe('the rolling cache', () => {
         // 4 MB holds about a third of the 12 MB study, so the reader has to roll blocks in and out.
         await openStudy(page, 'psg-continuous.edf', 'memory=4')
         expect((await settledState(page)).state).toBe('ready')
+        // The viewer takes keys once montage setup is done.
+        await expect(page.getByText('Please wait...')).toBeHidden({ timeout: 15_000 })
         // Page from the start to the last minutes, crossing every block boundary on the way. Each press has to move
         // the view, or the loop would spin on a viewer that has stopped responding.
         const target = STUDY_SECONDS - 4 * 60

@@ -168,7 +168,8 @@ export const spo2Wave = (seconds: number) => (t: number) => 90 + 8 * (t / second
  */
 export const psgSignals = (seconds: number): SyntheticSignal[] => [
     { label: 'SpO2', unit: '%', physical: [0, 100], samplesPerRecord: 1, wave: spo2Wave(seconds) },
-    { label: 'ECG', unit: 'uV', physical: [-2000, 2000], samplesPerRecord: 256, wave: sine(1.1, 800) },
+    // A DC offset the study's 0.5 Hz high-pass removes and a notch-only ECG would keep.
+    { label: 'ECG', unit: 'uV', physical: [-2000, 2000], samplesPerRecord: 256, wave: sum(sine(1.1, 800), () => 300) },
     { label: 'Thorax', unit: 'uV', physical: [-1000, 1000], samplesPerRecord: 32, wave: sine(0.25, 400) },
     { label: 'Abdomen', unit: 'uV', physical: [-1000, 1000], samplesPerRecord: 32, wave: sine(0.25, 400, 0.3) },
     { label: 'Resp nasal', unit: 'cmH2O', physical: [-10, 10], samplesPerRecord: 32, wave: sine(0.25, 5) },
@@ -185,6 +186,7 @@ export const psgSignals = (seconds: number): SyntheticSignal[] => [
     { label: 'C3-M2', unit: 'uV', physical: [-500, 500], samplesPerRecord: 256, wave: sum(sine(9, 30), sine(1.2, 40)) },
     { label: 'F4-M1', unit: 'uV', physical: [-500, 500], samplesPerRecord: 256, wave: sum(sine(6, 25), sine(1.5, 35)) },
     { label: 'Position', unit: '', physical: [0, 5], samplesPerRecord: 1, wave: () => 2 },
+    { label: 'Snore', unit: 'uV', physical: [-500, 500], samplesPerRecord: 256, wave: sine(80, 60) },
 ]
 
 /** One sleep stage per 30-second epoch, cycling through the stages so every one appears. */
