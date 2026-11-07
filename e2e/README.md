@@ -8,6 +8,7 @@ This directory is its own npm package and is not a workspace. Installing Playwri
 
 ```bash
 npm run build:edition -- --profile psg   # in the builder root; the tests read dist/psg/
+# psg-module is private, so the psg profile is a local one: profiles/local/psg.mjs
 cd e2e
 npm install
 npm run install:browsers                 # once: Playwright's Chromium

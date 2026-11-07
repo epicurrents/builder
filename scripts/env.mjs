@@ -78,7 +78,8 @@ export const packages = new Map([
             { name: 'eeg-module' },
             { name: 'emg-module' },
             { name: 'ncs-module' },
-            { name: 'psg-module' },
+            // Private repository.
+            { name: 'psg-module', public: false },
             { name: 'tab-module' },
             // Source type readers.
             { name: 'api-reader', public: false },
