@@ -204,6 +204,8 @@ unzip leadfields-standard_1020-free-7.5mm.zip -d dist/eeg/
 
 That produces `dist/eeg/leadfields/` holding a `manifest.json` and one content-hashed `.bin`. The tool finds them by itself; delete the folder to turn the feature back off.
 
+A page that embeds the edition can serve lead fields from somewhere else by passing its own `leadFieldProvider` in `SETUP.modules.eeg` before the lib loads. A provider given that way is used instead of the bundle, which is only consulted when the page supplies none.
+
 The bundle is a separate asset rather than part of the edition zip because it is close to incompressible — 9.4 MB of float64 that gzip barely touches — and most deployments will not serve it. It also changes on its own schedule: the blob is addressed by a hash of the arrays and the parameters that produced them, so it is regenerated when the head model, the montage, the grid or MNE changes, not when the viewer does.
 
 **Regenerating it** is a platform job, not a builder one, because the forward solution needs MNE: `manage.py generate_static_leadfields` in an Epicurrents platform checkout writes the pair into `frontend/vendor/leadfields/`. Zip that folder and attach it to the long-lived lead-field release. Keep the orientation free (three components per source, the generator's default): a fixed-orientation field constrains every dipole to point radially outward from the sphere centre, so a tangential source cannot be represented and comes back as a displaced position instead.

@@ -54,10 +54,15 @@ export const registerEeg = ({ app, setup, useSAB, registerInterfaceModule }: Set
     // bundle as JSON. It is attached to the launch configuration here instead, which is read once
     // every registrar has run. A configuration given as a string names a JSON document to be
     // fetched as the whole of the module's configuration, so replacing it with an object here would
-    // discard that document rather than extend it.
+    // discard that document rather than extend it. The packaged bundle is only the fallback: a page
+    // that supplies a provider of its own owns the lead fields, and the bundle's manifest, resolved
+    // against the page, need not exist where such a page is served.
     const eegConfig = setup.modules.eeg
     if (typeof eegConfig !== 'string') {
-        setup.modules.eeg = { ...eegConfig, leadFieldProvider } as EegModuleConfiguration
+        setup.modules.eeg = {
+            ...eegConfig,
+            leadFieldProvider: eegConfig?.leadFieldProvider ?? leadFieldProvider,
+        } as EegModuleConfiguration
     }
     registerInterfaceModule('eeg', interfaceEegModule)
 }
