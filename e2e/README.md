@@ -15,7 +15,7 @@ npm run install:browsers                 # once: Playwright's Chromium
 npm test                                 # or `npm run test:e2e` from the builder root
 ```
 
-`E2E_EDITION=<name>` tests another edition and `E2E_PORT` moves the server off 4173. `npx playwright show-report` opens the last run's report, with the screenshots each test takes and the warnings the page logged.
+`E2E_EDITION=<name>` tests another edition; the native media tests need one that registers audio, image and video, such as `full`, and skip themselves otherwise and `E2E_PORT` moves the server off 4173. `npx playwright show-report` opens the last run's report, with the screenshots each test takes and the warnings the page logged.
 
 ## How it works
 

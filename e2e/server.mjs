@@ -42,7 +42,9 @@ const types = {
     '.js': 'text/javascript',
     '.json': 'application/json',
     '.mjs': 'text/javascript',
+    '.png': 'image/png',
     '.wasm': 'application/wasm',
+    '.wav': 'audio/wav',
 }
 
 /** Map a request path to a file under one of the roots, or null when it escapes them. */

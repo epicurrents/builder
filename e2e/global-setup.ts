@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { psgSignals, stageAnnotations, writeEdf } from './fixtures/edf.ts'
+import { writePng, writeWav } from './fixtures/media.ts'
 
 export const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '.fixtures')
 
@@ -19,6 +20,10 @@ export const STUDY_SECONDS = 20 * 60
  * is read in several parts and a slow read leaves most of the window still loading when the view could be drawn.
  */
 export const LONG_STUDY_SECONDS = 4 * 3600
+
+/** Size of the image fixture in pixels, and length of the sound fixture in seconds. */
+export const IMAGE_SIZE = [64, 48] as const
+export const SOUND_SECONDS = 2
 
 export default function globalSetup () {
     fs.mkdirSync(FIXTURE_DIR, { recursive: true })
@@ -51,4 +56,6 @@ export default function globalSetup () {
             recordOnsets: Array.from({ length: STUDY_SECONDS }, (_, i) => (i < half ? i : i + 60)),
         })
     )
+    fs.writeFileSync(path.join(FIXTURE_DIR, 'gradient.png'), writePng(...IMAGE_SIZE))
+    fs.writeFileSync(path.join(FIXTURE_DIR, 'tone.wav'), writeWav(SOUND_SECONDS))
 }

@@ -22,20 +22,26 @@
  */
 import type { SetupContext } from '@epicurrents/interface'
 import { registerAcc } from './modules/acc'
+import { registerAudio } from './modules/audio'
 import { registerEeg } from './modules/eeg'
 import { registerEmg } from './modules/emg'
 import { registerHtm } from './modules/htm'
+import { registerImage } from './modules/image'
 import { registerPdf } from './modules/pdf'
 import { registerPsg } from './modules/psg'
+import { registerVideo } from './modules/video'
 
 /** A registrar composes one modality's core module, readers and interface UI. */
 export type ModuleRegistrar = (ctx: SetupContext) => void | Promise<void>
 
 export const MODULE_REGISTRARS: Record<string, ModuleRegistrar> = {
     acc: registerAcc,
+    audio: registerAudio,
     eeg: registerEeg,
     emg: registerEmg,
     htm: registerHtm,
+    image: registerImage,
     pdf: registerPdf,
     psg: registerPsg,
+    video: registerVideo,
 }

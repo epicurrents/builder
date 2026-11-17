@@ -26,6 +26,6 @@ export default {
         'pyodide-service',
     ],
     setup: {
-        activeModules: ['eeg', 'emg', 'htm', 'pdf'],
+        activeModules: ['audio', 'eeg', 'emg', 'htm', 'image', 'pdf', 'video'],
     },
 }
