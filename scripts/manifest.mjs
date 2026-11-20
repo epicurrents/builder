@@ -7,9 +7,11 @@
  * later `npm run setup -- --manifest <file>` checks out these exact SHAs, so the
  * edition rebuilds from identical sources without depending on any npm version bump.
  *
- * Sources, not the whole dependency graph: setup installs each package with `npm i`
- * against its own lockfile, so third-party dependency resolution is pinned only as
- * far as those lockfiles pin it. Identical first-party code, not a byte-identical
+ * Sources, not the whole dependency graph: setup installs the workspace once against
+ * the builder's root `package-lock.json`, and the manifest records the builder commit
+ * that lock came from. A release build installs with `npm ci`, so third-party
+ * resolution is pinned as far as that lock pins it, and packages the manifest does
+ * not name stay at a branch head. Identical first-party code, not a byte-identical
  * bundle.
  *
  * Run after setup + build: `EPI_PROFILE=<name> node scripts/manifest.mjs`. The

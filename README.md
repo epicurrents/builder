@@ -49,7 +49,7 @@ A more detailed package catalogue is in the [library structure](https://docs.epi
 
 ## Prerequisites
 
-- **Node.js** 22.12 or newer (Active LTS) and **npm** 10 or newer. Required by Vite 7 (`engines: ^20.19.0 || >=22.12.0`) and by the build scripts' use of `import.meta.dirname` (Node 20.11+). Older Node fails in confusing ways — an undefined `rootDir` rather than a clear version error — so the root `package.json` pins `engines.node` to `>=22.12.0`.
+- **Node.js** 22.12 or newer (Active LTS) and **npm** 11 or newer. Required by Vite 7 (`engines: ^20.19.0 || >=22.12.0`) and by the build scripts' use of `import.meta.dirname` (Node 20.11+). Older Node fails in confusing ways — an undefined `rootDir` rather than a clear version error — so the root `package.json` pins `engines.node` to `>=22.12.0`.
 - **git** with access to the package repositories.
 - **yarn** — only if you build the optional OHIF radiology integration (OHIF uses yarn).
 - A modern **Chromium-based browser** to run the viewer (the interface requires Chromium APIs).
@@ -87,7 +87,7 @@ A profile also names the modalities its edition registers (`setup.activeModules`
 
 The manifest pins *sources*; the committed root `package-lock.json` pins the dependency graph, and the manifest records the builder commit the lock came from. The release workflow installs with `npm ci` so it cannot resolve anything the lock does not already name. Reproducing from a manifest alone is close but not guaranteed byte for byte, because the selection is wider than the manifest and leaves the packages it does not name at a branch head.
 
-> `npm run build:lib` / `build:app` build the interface's *own* all-in bundle (every module) rather than a profile-selected edition; they remain for the platform embedding pipeline. New builds should use `build:edition`.
+> `npm run build:app` builds the interface's *own* standalone app with every module, rather than a profile-selected edition, for quick demos. Editions are built with `build:edition`.
 
 ## Choosing which packages to build
 
@@ -158,7 +158,7 @@ The same scoping works for `update`, `instl`, `clean`, `build:asset` and `build:
 | `npm run copy:workers` | `scripts/copy.mjs workers` | Copy compiled UMD worker bundles into the interface. |
 | `npm run typecheck` | `scripts/typecheck.mjs` | Run `tsc --noEmit` over every library package and print a ✓/✗ summary. |
 | `npm run start` | — | Copy workers, then launch the interface Vite dev server. |
-| `npm run build:lib` / `build:app` | — | Build the interface's own all-in library / standalone app (platform pipeline). |
+| `npm run build:app` | — | Build the interface's own standalone app with every module (quick demos). |
 | `npm run build:dev` | — | Full development stack: assets + OHIF + copy + app. |
 | `npm run test` | — | Run every package's test suite (`vitest`). |
 | `npm run test:e2e` | `e2e/` | Run the browser tests against a built edition; see [e2e/README.md](e2e/README.md). |

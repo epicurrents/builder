@@ -10,7 +10,7 @@
  * finished importer yet, so they are deliberately not registered.
  *
  * A registrar composes whatever packages its modality needs, and some of those are
- * not public: acc pulls acc-module and csv-reader. Rollup resolves a static import
+ * not public: psg pulls psg-module. Rollup resolves a static import
  * before it can tree-shake what the import provides, so a build only avoids those
  * packages if trimming removes the registrar first — which needs a profile with a
  * non-empty `activeModules`. An empty list (or no profile at all) keeps every
